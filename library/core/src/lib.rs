@@ -190,6 +190,7 @@
 #![feature(allow_internal_unstable)]
 #![feature(asm_const)]
 #![feature(associated_type_bounds)]
+#![feature(associated_type_defaults)]
 #![feature(auto_traits)]
 #![feature(c_unwind)]
 #![feature(cfg_sanitize)]
@@ -338,6 +339,7 @@ pub mod cmp;
 pub mod convert;
 pub mod default;
 pub mod error;
+pub mod introwospection;
 pub mod marker;
 pub mod ops;
 
