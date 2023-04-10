@@ -45,7 +45,7 @@
 //!
 //! fn main () {
 //!     type MeowInfo = introwospect<other_crate::Meow>;
-//!     println!("struct {}, with {} fields:\n\t{} ({}, {})",
+//!     println!("struct {}, with {} fields:\n\t{} ({}, {})\n\t{} ({}, {})",
 //!         <MeowInfo as StructDescriptor>::NAME,
 //!         <MeowInfo as StructDescriptor>::FIELD_COUNT,
 //!         <MeowInfo as FieldDescriptor<0>>::FIELD_COUNT,
@@ -84,7 +84,7 @@
 //! }
 //! */
 //!
-//! struct DescriptorPrinter {}
+//! struct DescriptorPrinter;
 //! impl FieldDescriptorVisitor for DescriptorPrinter {
 //!     type Output = ()
 //!     fn visit_field<Type, const INDEX: usize>(&self)
@@ -109,8 +109,8 @@
 //!
 //! fn main () {
 //!     type MeowInfo = introwospect<other_crate::Meow>;
-//!     let printer = DescriptorPrinter{};
-//!     printer.visit_struct<MeowInfo>();
+//!     let printer = DescriptorPrinter;
+//!     printer.visit_struct::<MeowInfo>();
 //!     // Should display:
 //!     /* struct other_create::Meow with 2 fields:
 //!      *     purr_level (i32, 0)
