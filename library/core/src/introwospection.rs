@@ -10,12 +10,12 @@
 //! primitive as compared to counterparts in languages such as C#, Java,
 //! Haskell, JS, Ruby, or similar dynamic languages.
 //!
-//! In particular, the two core tenents are non-negotiable for this:
-//! - it must not allocate, ever.
+//! In particular, the two core tenets that are non-negotiable for this:
+//! - it must not perform runtime allocation, ever.
 //! - it must not require runtime dispatch to use, ever.
 //!
 //! Users of this API may lower the concepts found here to dynamic alternatives,
-//! and as part of this API there are foundamental elements describing the full
+//! and as part of this API there are fundamental elements describing the full
 //! functionality but without all of the compile-time information (see the
 //! `any_introwospection` module as part of the `std` crate).
 //!
@@ -39,7 +39,7 @@
 //! pub struct Meow {
 //!     pub purr_level: i32,
 //!     hairballs: i32,
-//!     pub scratch_couch: SystemTime
+//!     pub scratch_couch: SystemTime,
 //! }
 //! */
 //!
@@ -228,18 +228,19 @@ pub enum AdtId {
     Union,
     /// An abstract data type made using the `enum` keyword. It contains 0 or
     /// more variants which are fields directly related to the enumeration itself,
-    /// and whose offsets are calculcated as from the base of the enumeration,
+    /// and whose offsets are calculated as from the base of the enumeration,
     /// and NOT as an independent data type.
     Enum,
     /// A tuple, created by a list of initializers or types enclosed by parentheses
-    /// (e.g., `( ... )`). Note that the `Unit` type is just the empty tuple, and so
+    /// (e.g., `( ... )`). Note that the `unit` type is just the empty tuple, and so
     /// is not listed as a separate type in this list.
     Tuple,
     /// An array type, usually formed through initializer with square brackets. The type is
-    /// a type and a fixed size `N`, e.g. `[ ...; N ]`.
+    /// a type parameter `T` and a const generic parameter `const N: usize`, e.g. `[None; N]`.
     Array,
-    /// A slice type, usually formed through initializer with square brackets no fixed size
-    /// , e.g. `[ ... ]`.
+    /// A slice type, usually not directly instantiated but instead borrowed as a view
+    /// over another type like `[T; N]` or `Vec<T>`, typically via slice indexing,
+    /// e.g. `[0; 100][13..=37]`.
     Slice,
     /// A function definition, such as those defined with the `fn` keyword.
     Function,
@@ -247,7 +248,7 @@ pub enum AdtId {
 
 /// An empty structure whose sole job is to indicate when a variant is unspecified.
 /// This is important in the case of two variants of e.g. an
-/// enumeration which only different by the use of nothing and the
+/// enumeration which only differ by the use of nothing and the
 /// use of () in the variants. That is:
 /// ````
 /// enum E0 { A }
@@ -288,7 +289,7 @@ pub trait AdtDescriptor {
     /// structure, and similar useful identifications.
     const ID: AdtId;
     /// The name of the abstract data type. This is meant to be the full path of the data type,
-    /// according to the version of Rust this was compiled again.
+    /// according to the version of Rust this was compiled against.
     const NAME: &'static str;
     /// The introwospection attributes (`#[introwospection(...)`]) attached to this entity.
     /// These are attributes capable of being used for compile-time introspection, such as for
@@ -335,11 +336,11 @@ pub trait EnumDescriptor: AdtDescriptor {
 
 /// A description of a function definition or similar construct.
 pub trait FunctionDescriptor: AdtDescriptor {
-    /// A type describing all of the parmaeters of this function. If this is `NoType`, then
-    /// there were no parameters that was part of this function.
+    /// A type describing all of the parameters of this function. If this is `NoType`, then
+    /// there were no parameters that were part of this function.
     ///
     /// NOTE
-    /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
+    /// TODO(thephd) Enable a succinct way to describe all of the constraints on this type:
     /// ```
     /// type ParametersType :
     ///     (for <const I: usize = 0..Self::PARAMETER_COUNT> ParameterDescriptor<I>)
@@ -350,7 +351,7 @@ pub trait FunctionDescriptor: AdtDescriptor {
     type ParametersType = NoType;
     /// The return type of of the function.
     type ReturnType;
-    /// The number of parameters in the function. Note that a pattern constitues a
+    /// The number of parameters in the function. Note that a pattern constitutes a
     /// single parameter.
     const PARAMETER_COUNT: usize = 0;
 }
@@ -359,12 +360,12 @@ pub trait FunctionDescriptor: AdtDescriptor {
 pub trait ArrayDescriptor: AdtDescriptor {
     /// The element type of the array.
     type ElementType;
-    /// The number of parameters in the function. Note that a pattern constitues a
+    /// The number of parameters in the function. Note that a pattern constitutes a
     /// single parameter.
     const ELEMENT_COUNT: usize = 0;
 }
 
-/// A description of the a built-in slice type.
+/// A description of a built-in slice type.
 pub trait SliceDescriptor: AdtDescriptor {
     /// The element type of the slice.
     type ElementType;
@@ -430,7 +431,7 @@ pub trait FieldDescriptor<const DECLARATION_INDEX: usize> {
     /// The 0-based declaration (source code) index.
     const DECLARATION_INDEX: usize = DECLARATION_INDEX;
     /// The name of the field within the union, variant, tuple, or structure. If this is empty, it
-    /// signifies an completely unnamed field. If this is part of a tuple-like field syntax,
+    /// signifies a completely unnamed field. If this is part of a tuple-like field syntax,
     /// then the name of the field will not be empty, but instead be `.0` or similar.
     const NAME: &'static str;
     /// The byte offset from the base of an owner type object to the data type of this field.
@@ -452,7 +453,7 @@ pub trait FieldDescriptor<const DECLARATION_INDEX: usize> {
 /// A descriptor that describes all the necessary components of a variant, from its
 /// names to its fields, at compile-time.
 ///
-/// `DECLARTION_INDEX` is the index of the variant in declaration (source code) order.
+/// `DECLARATION_INDEX` is the index of the variant in declaration (source code) order.
 pub trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// The type which owns this variant.
     type OwnerType: 'static + EnumDescriptor;
@@ -460,7 +461,7 @@ pub trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// is `core::introwospection::NoType`, then it has no implementations of a field.
     ///
     /// NOTE
-    /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
+    /// TODO(thephd) Enable a succinct way to describe all of the constraints on this type:
     /// ```
     /// type FieldsType :
     ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
@@ -493,8 +494,8 @@ pub trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// to get a discriminant at compile-time without needing to generate a fake
     /// enumeration object.
     const DISCRIMINANT: &'static Discriminant<Self::OwnerType>;
-    /// The number of field desciptors associated with the `FieldsType` type and this variant.
-    /// `FIELD_COUNT` and `FielsdType` can be used If `FIELD_COUNT` is zero
+    /// The number of field descriptors associated with the `FieldsType` type and this variant.
+    /// `FIELD_COUNT` and `FielsdType` can be used if `FIELD_COUNT` is zero
     const FIELD_COUNT: usize = 0;
     /// The value of an enumeration which opts into a `#[repr(IntType)]` representation.
     /// If the enumeration has not opted into such a representation, then this will be
@@ -715,7 +716,7 @@ pub trait FieldDescriptorVisitor {
     /// A visitation function for a specific `FieldDescriptor<DECLARATION_INDEX>` type. This
     /// form is mutable, and by default calls `Self::visit_field::<Type, DECLARATION_INDEX>`.
     ///
-    /// Returns `Self::Output`1
+    /// Returns `Self::Output`.
     fn visit_field_mut<Type: 'static, const DECLARATION_INDEX: usize>(&mut self) -> Self::Output
     where
         Type: FieldDescriptor<DECLARATION_INDEX>,
@@ -743,7 +744,7 @@ pub trait VariantDescriptorVisitor {
     /// This form is mutable, and by default calls
     /// `Self::visit_variant::<Type, DECLARATION_INDEX>`.
     ///
-    /// Returns `Self::Output`
+    /// Returns `Self::Output`.
     fn visit_variant_mut<Type: 'static, const DECLARATION_INDEX: usize>(&mut self) -> Self::Output
     where
         Type: VariantDescriptor<DECLARATION_INDEX>,
@@ -822,7 +823,7 @@ pub struct AnySliceDescriptor {
     pub name: &'static str,
     /// The type of each element.
     pub element_type_id: TypeId,
-    /// A built-in type always has no attributes, but this is here either way.
+    /// A built-in type has no user-controllable attributes, but this is here either way.
     pub attributes: &'static [AttributeDescriptor; 0],
 }
 
@@ -837,7 +838,7 @@ pub struct AnyArrayDescriptor {
     pub element_type_id: TypeId,
     /// The number of compile-time elements in the array.
     pub element_count: usize,
-    /// A built-in type always has no attributes, but this is here either way.
+    /// A built-in type has no user-controllable attributes, but this is here either way.
     pub attributes: &'static [AttributeDescriptor; 0],
 }
 
@@ -852,7 +853,7 @@ pub struct AnyTupleDescriptor {
     /// A slice describing each field of this tuple. If this is empty,
     /// this is the unit type.
     pub fields: &'static [AnyFieldDescriptor],
-    /// A built-in type always has no attributes, but this is here either way.
+    /// A built-in type has no user-controllable attributes, but this is here either way.
     pub attributes: &'static [AttributeDescriptor; 0],
 }
 
@@ -1052,6 +1053,7 @@ pub const fn get_any_field_mut<'life_owner, 'life_field, Type: 'static, OwnerTyp
 
 /// A visitor for taking an existing structure, enumeration, union, field, function,
 /// or variant descriptor and
+/// TODO(jubilee): finishing this.
 #[derive(Debug)]
 pub struct ToAnyDescriptorVisitor;
 
