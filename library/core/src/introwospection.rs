@@ -44,7 +44,7 @@
 //! */
 //!
 //! fn main () {
-//!     type MeowInfo = introwospect<other_crate::Meow>;
+//!     type MeowInfo = introwospect_type<other_crate::Meow>;
 //!     println!("struct {}, with {} fields:\n\t{} ({}, {})\n\t{} ({}, {})",
 //!         <MeowInfo as StructDescriptor>::NAME,
 //!         <MeowInfo as StructDescriptor>::FIELD_COUNT,
@@ -92,7 +92,10 @@
 //!         where Type : FieldDescriptor<INDEX>
 //!     {
 //!         let type_name = std::any::type_name::<Type::Type>();
-//!         println!("\t{} ({}, {})\n" Type::NAME, type_name, Type::);
+//!         println!("\t{} ({}, {})",
+//!             Type::NAME,
+//!             type_name,
+//!             Type::BYTE_OFFSET);
 //!     }
 //! }
 //! impl StructDescriptorVisitor for DescriptorPrinter {
@@ -101,11 +104,11 @@
 //!         -> Self::Output
 //!         where Type : StructDescriptor
 //!     {
-//!         println!("struct {}, with {} fields:\n",
+//!         println!("struct {}, with {} fields:",
 //!             Type::NAME,
 //!             Type::FIELD_COUNT);
 //!         // now, introspect over the fields of this type.
-//!         ( introwospect_over(Type::Type, self) );
+//!         ( introwospect_over(Type::Type, Type::FieldsType, self) );
 //!     }
 //! }
 //!
@@ -145,7 +148,10 @@
 //!         where Type : FieldDescriptor<INDEX>
 //!     {
 //!         let type_name = std::any::type_name::<Type::Type>();
-//!         println!("\t{} ({}, {})\n" Type::NAME, type_name, Type::);
+//!         println!("\t{} ({}, {})\n"
+//!             Type::NAME,
+//!             type_name,
+//!             Type::BYTE_OFFSET);
 //!     }
 //! }
 //! impl StructDescriptorVisitor for DescriptorPrinter {
@@ -158,15 +164,20 @@
 //!             Type::NAME,
 //!             Type::FIELD_COUNT);
 //!         // now, introspect over the fields of this type.
-//!         ( introwospect_over(Type::Type, self) );
+//!         ( introwospect_over(Type::Type, Type::FieldsType, self) );
 //!     }
 //! }
 //!
 //! fn main () {
 //!     let printer = DescriptorPrinter;
-//!     introwospect(other_crate::Meow, printer);
-//!     // // Equivalent to:
-//!     // type MeowInfo = introwospect::<other_crate::Meow>;
+//!     printer.visit_struct(introwospect(other_crate::Meow))
+//!     // // Equivalent to this:
+//!     //
+//!     // introwospect(other_crate::Meow, printer);
+//!     //
+//!     // // or, equivalent to this:
+//!     //
+//!     // type MeowInfo = introwospect_type<other_crate::Meow>;
 //!     // printer.visit_struct::<MeowInfo>();
 //!     // and it should display:
 //!     /* struct other_create::Meow with 2 fields:
@@ -208,6 +219,7 @@
 
 #![unstable(feature = "introwospection", issue = "none")]
 
+use crate::any::type_name;
 use crate::any::{Any, TypeId};
 use crate::fmt::{Debug, Display, Formatter, Result};
 use crate::mem::Discriminant;
@@ -273,6 +285,7 @@ const NO_TYPE: NoType = NoType;
 
 /// A list of names and values of attributes contained within the
 /// `#[introwospection(...)]` attribute.
+#[non_exhaustive]
 pub struct AttributeDescriptor {
     /// The name of an attribute. Required, comes before the `=`
     /// sign (if present).
@@ -284,7 +297,7 @@ pub struct AttributeDescriptor {
 }
 
 /// The basic Abstract Data Type (ADT) descriptor.
-pub trait AdtDescriptor {
+pub unsafe trait AdtDescriptor {
     /// The identifying ID of an abstract data type, for matching on whether it's a function,
     /// structure, and similar useful identifications.
     const ID: AdtId;
@@ -306,15 +319,31 @@ pub trait AdtDescriptor {
 }
 
 /// A description of a structure or union type.
-pub trait StructDescriptor: AdtDescriptor {
+pub unsafe trait StructDescriptor: AdtDescriptor {
     /// The type of the `struct` or `union` that was described.
     type Type;
+    /// A type that represents the fields of this structure. If this is
+    /// `core::introwospection::NoType`, then it has no fields and no field
+    /// implementations on it.
+    ///
+    /// NOTE
+    /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
+    /// ```
+    /// type FieldsType :
+    ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
+    /// = NoType;
+    /// ```
+    /// to specify the proper boundaries to make this type usable in generic contexts. (This is
+    /// bikeshed syntax and subject to change, as there is already a `for <T>` feature in Rust.)
+    type FieldsType = NoType;
     /// The number of fields for this structure or union type.
     const FIELD_COUNT: usize = 0;
+    /// Whether or not there are any fields which are not visible to this type.
+    const NON_VISIBLE_FIELDS: bool = false;
 }
 
 /// A description of an enumeration type.
-pub trait EnumDescriptor: AdtDescriptor {
+pub unsafe trait EnumDescriptor: AdtDescriptor {
     /// The type of the `enum` that was described.
     type Type;
     /// A type describing all of the variants of this enumeration.
@@ -335,7 +364,9 @@ pub trait EnumDescriptor: AdtDescriptor {
 }
 
 /// A description of a function definition or similar construct.
-pub trait FunctionDescriptor: AdtDescriptor {
+pub unsafe trait FunctionDescriptor: AdtDescriptor {
+    /// The type of the function that was described.
+    type Type;
     /// A type describing all of the parameters of this function. If this is `NoType`, then
     /// there were no parameters that were part of this function.
     ///
@@ -357,7 +388,9 @@ pub trait FunctionDescriptor: AdtDescriptor {
 }
 
 /// A description of a built-in array type.
-pub trait ArrayDescriptor: AdtDescriptor {
+pub unsafe trait ArrayDescriptor: AdtDescriptor {
+    /// The full type of the array.
+    type Type;
     /// The element type of the array.
     type ElementType;
     /// The number of parameters in the function. Note that a pattern constitutes a
@@ -366,14 +399,18 @@ pub trait ArrayDescriptor: AdtDescriptor {
 }
 
 /// A description of a built-in slice type.
-pub trait SliceDescriptor: AdtDescriptor {
+pub unsafe trait SliceDescriptor: AdtDescriptor {
+    /// The full type of the slice.
+    type Type;
     /// The element type of the slice.
     type ElementType;
 }
 
 /// A description of a built-in tuple type.
-pub trait TupleDescriptor: AdtDescriptor {
-    /// A type that represents the fields of this enumeration. If this is
+pub unsafe trait TupleDescriptor: AdtDescriptor {
+    /// The full type of the tuple.
+    type Type;
+    /// A type that represents the fields of this tuple. If this is
     /// `core::introwospection::NoType`, then it has no fields and no field
     /// implementations on it.
     ///
@@ -392,7 +429,7 @@ pub trait TupleDescriptor: AdtDescriptor {
 }
 
 /// A parameter for a function definition, or similar construction.
-pub trait ParameterDescriptor<const PARAMETER_INDEX: usize> {
+pub unsafe trait ParameterDescriptor<const PARAMETER_INDEX: usize> {
     /// The function type related to this parameter descriptor.
     type OwnerType;
     /// The type of the function parameter.
@@ -421,7 +458,7 @@ pub trait ParameterDescriptor<const PARAMETER_INDEX: usize> {
 /// of an enumeration, a field on a structure, or a field on a union.
 ///
 /// `DECLARATION_INDEX` is the 0-based index of the field in declaration (source code) order.
-pub trait FieldDescriptor<const DECLARATION_INDEX: usize> {
+pub unsafe trait FieldDescriptor<const DECLARATION_INDEX: usize> {
     /// The type that owns this field. It may be any abstract data type union, a variant,
     /// tuple, or a structure type. All (byte) offsets are from the base of an
     /// `Self::OwnerType` object.
@@ -454,7 +491,7 @@ pub trait FieldDescriptor<const DECLARATION_INDEX: usize> {
 /// names to its fields, at compile-time.
 ///
 /// `DECLARATION_INDEX` is the index of the variant in declaration (source code) order.
-pub trait VariantDescriptor<const DECLARATION_INDEX: usize> {
+pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// The type which owns this variant.
     type OwnerType: 'static + EnumDescriptor;
     /// A type that represents the fields of this enumeration's variant. If this
@@ -698,6 +735,36 @@ pub trait ParameterDescriptorVisitor {
     }
 }
 
+/// A visitor for a collection of parameter descriptors that handles all incoming compile-time
+/// data stored on an implementation of a typical `ParameterDescriptor<I>`, where `I` is from `0`
+/// to the maximum parameter count of a given type.
+///
+/// In this version, the `DECLARATION_INDEX` is provided on the visitor itself, which allows for
+/// each different parameter handled by this visitor to have a different `type Output` on its
+/// implementation.
+pub trait ParameterDescriptorVisitorAt<const DECLARATION_INDEX: usize> {
+    /// The return type of the `visit_parameter` and `visit_parameter_mut` implementations.
+    type Output;
+
+    /// A visitation function for a specific `ParameterDescriptor` type.
+    ///
+    /// Returns `Self::Output`.
+    fn visit_parameter<Type: 'static>(&self) -> Self::Output
+    where
+        Type: ParameterDescriptor<DECLARATION_INDEX>;
+
+    /// A visitation function for a specific `ParameterDescriptor` type. This form is mutable,
+    /// and by default calls `Self::visit_parameter::<Type, DECLARATION_INDEX>`.
+    ///
+    /// Returns `Self::Output`
+    fn visit_parameter_mut<Type: 'static>(&mut self) -> Self::Output
+    where
+        Type: ParameterDescriptor<DECLARATION_INDEX>,
+    {
+        return Self::visit_parameter::<Type>(&self);
+    }
+}
+
 /// A visitor for a collection of field descriptors that handles all incoming compile-time
 /// data stored on an implementation of a typical `FieldDescriptor<I>`, where `I` is from `0`
 /// to the maximum field count of a given type. This is used for structure and union types.
@@ -722,6 +789,39 @@ pub trait FieldDescriptorVisitor {
         Type: FieldDescriptor<DECLARATION_INDEX>,
     {
         return Self::visit_field::<Type, DECLARATION_INDEX>(&self);
+    }
+}
+
+/// A visitor for a collection of field descriptors that handles all incoming compile-time
+/// data stored on an implementation of a typical `FieldDescriptor<I>`, where `I` is from `0`
+/// to the maximum field count of a given type. This is used for structure and union types.
+///
+/// Providing the `DECLARATION_INDEX` as part of the visitor allows for each different parameter
+/// handled by this visitor to have a different `type Output` on its implementation. This version
+/// of the trait is preferred over a `FieldDescriptorVisitor` if it exists for this particular
+/// `DECLARATION_INDEX` on the visitor.
+
+pub trait FieldDescriptorVisitorAt<const DECLARATION_INDEX: usize> {
+    /// The return type of the `visit_field` and `visit_field_mut` implementations.
+    type Output;
+
+    /// A visitation function for a specific `FieldDescriptor<DECLARATION_INDEX>`
+    /// implementation.
+    ///
+    /// Returns `Self::Output`.
+    fn visit_field<Type: 'static>(&self) -> Self::Output
+    where
+        Type: FieldDescriptor<DECLARATION_INDEX>;
+
+    /// A visitation function for a specific `FieldDescriptor<DECLARATION_INDEX>` type. This
+    /// form is mutable, and by default calls `Self::visit_field::<Type>`.
+    ///
+    /// Returns `Self::Output`.
+    fn visit_field_mut<Type: 'static>(&mut self) -> Self::Output
+    where
+        Type: FieldDescriptor<DECLARATION_INDEX>,
+    {
+        return Self::visit_field::<Type>(&self);
     }
 }
 
@@ -753,6 +853,36 @@ pub trait VariantDescriptorVisitor {
     }
 }
 
+/// A visitor for a collection of variant descriptors that handles all incoming compile-time
+/// data stored on an implementation of a typical `VariantDescriptor<I>`, where `I` is from `0`
+/// to the maximum variant count of a given type. This is used for enumeration types, and is
+/// preferred over the `VariantDescriptorVisitor` if one exists for this for particular
+/// `DECLARATION_INDEX`.
+pub trait VariantDescriptorVisitorAt<const DECLARATION_INDEX: usize> {
+    /// The return type of the `visit_function` and `visit_function_mut` implementations.
+    type Output;
+
+    /// A visitation function for a specific `VariantDescriptor<DECLARATION_INDEX>`
+    /// implementation.
+    ///
+    /// Returns `Self::Output`.
+    fn visit_variant<Type: 'static>(&self) -> Self::Output
+    where
+        Type: VariantDescriptor<DECLARATION_INDEX>;
+
+    /// A visitation function for a specific `VariantDescriptor<DECLARATION_INDEX>` type.
+    /// This form is mutable, and by default calls
+    /// `Self::visit_variant::<Type, DECLARATION_INDEX>`.
+    ///
+    /// Returns `Self::Output`.
+    fn visit_variant_mut<Type: 'static>(&mut self) -> Self::Output
+    where
+        Type: VariantDescriptor<DECLARATION_INDEX>,
+    {
+        return Self::visit_variant::<Type>(&self);
+    }
+}
+
 /// A combination of all the other `core::introwospection::*Visitor` traits. This is
 /// used to ensure a visitor implements all of the required visitors for every type
 /// of entity, so that it can recurse down every type of reflectable entity.
@@ -770,6 +900,7 @@ pub trait DescriptorVisitor:
 
 /// A run-time description of a structure or union type.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyStructDescriptor {
     /// The type of this sturcture (whether it is a union or a structure).
     pub adt_id: AdtId,
@@ -794,6 +925,7 @@ pub struct AnyStructDescriptor {
 
 /// A run-time description of an enumeration type.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyEnumDescriptor {
     /// The type of the `enum` that was described.
     pub type_id: TypeId,
@@ -816,6 +948,7 @@ pub struct AnyEnumDescriptor {
 
 /// A run-time description of an enumeration type.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnySliceDescriptor {
     /// The type of the `enum` that was described.
     pub type_id: TypeId,
@@ -829,6 +962,7 @@ pub struct AnySliceDescriptor {
 
 /// A run-time description of an enumeration type.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyArrayDescriptor {
     /// The type of the `enum` that was described.
     pub type_id: TypeId,
@@ -844,6 +978,7 @@ pub struct AnyArrayDescriptor {
 
 /// A run-time description of a tuple type.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyTupleDescriptor {
     /// The type of the tuple that was described.
     pub type_id: TypeId,
@@ -859,6 +994,7 @@ pub struct AnyTupleDescriptor {
 
 /// A run-time description of a function definition, or similar construct.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyFunctionDescriptor {
     /// The name of the function definition, or similar construct.
     pub name: &'static str,
@@ -898,6 +1034,7 @@ pub enum AnyAdtDescriptor {
 
 /// A parameter in a function declaration or similar construct.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyParameterDescriptor {
     /// A description fo the function tyoe that is related to this parameter.
     pub owner_type: AnyFunctionDescriptor,
@@ -925,6 +1062,7 @@ pub struct AnyParameterDescriptor {
 /// A descriptor that describes all the necessary information of a field that exists on the variant
 /// of an enumeration, a field on a structure, or a field on a union.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyFieldDescriptor {
     /// The type that owns this field. It may be any abstract data type union, a variant,
     /// or a structure type. All (byte) offsets are from the base of an `Self::OwnerType`
@@ -956,6 +1094,7 @@ pub struct AnyFieldDescriptor {
 /// A descriptor that describes all the necessary components of a variant, from its
 /// names to its fields, at compile-time.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AnyVariantDescriptor {
     /// The enumeration that owns this variant.
     pub owner_type: TypeId,
@@ -1055,6 +1194,7 @@ pub const fn get_any_field_mut<'life_owner, 'life_field, Type: 'static, OwnerTyp
 /// or variant descriptor and
 /// TODO(jubilee): finishing this.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ToAnyDescriptorVisitor;
 
 impl StructDescriptorVisitor for ToAnyDescriptorVisitor {
@@ -1067,7 +1207,7 @@ impl StructDescriptorVisitor for ToAnyDescriptorVisitor {
         let fields: &'static [AnyFieldDescriptor] = &[];
         // TODO(thephd):
         // let fields : &'static [AnyFieldDescriptor]
-        //     = &[introwospect_over(Type::FieldsType, &self)];
+        //     = &[introwospect_over(Type::Type, Type::FieldsType, &self)];
         AnyStructDescriptor {
             adt_id: Type::ID,
             name: Type::NAME,
@@ -1088,7 +1228,7 @@ impl EnumDescriptorVisitor for ToAnyDescriptorVisitor {
         let variants: &'static [AnyVariantDescriptor] = &[];
         // TODO(thephd) fix to get compilation of:
         // let fields : &'static [AnyFieldDescriptor]
-        //     = &[introwospect_over(Type::VariantsType, &self)];
+        //     = &[introwospect_over(Type::Type, Type::FieldsType, &self)];
         AnyEnumDescriptor {
             name: Type::NAME,
             type_id: TypeId::of::<Type::Type>(),
@@ -1107,7 +1247,7 @@ impl FunctionDescriptorVisitor for ToAnyDescriptorVisitor {
     {
         // TODO(thephd) Allow compilation of:
         // let parameters: &'static [AnyParameterDescription]
-        //     = &[introwospect_over(Type::ParametersType, self)];
+        //     = &[introwospect_over(Type::Type, Type::ParametersType, self)];
         let parameters: &'static [AnyParameterDescriptor] = &[];
         AnyFunctionDescriptor {
             name: Type::NAME,
@@ -1126,7 +1266,8 @@ impl TupleDescriptorVisitor for ToAnyDescriptorVisitor {
         Type: TupleDescriptor,
     {
         // TODO(thephd) Allow compilation of:
-        // let fields: &'static [AnyFieldDescription] = &[introwospect_over(Type::FieldsType, self)];
+        // let fields: &'static [AnyFieldDescription]
+        //     = &[introwospect_over(Type::Type, Type::FieldsType, self)];
         let fields: &'static [AnyFieldDescriptor] = &[];
         AnyTupleDescriptor {
             name: Type::NAME,
@@ -1196,7 +1337,8 @@ impl VariantDescriptorVisitor for ToAnyDescriptorVisitor {
         Type: VariantDescriptor<DECLARATION_INDEX>,
     {
         // TODO(thephd) Enable syntax for iterating over fields
-        // let fields: &'static [AnyFieldDescription] = &[introwospect_over(Type::FieldsType, self)];
+        // let fields: &'static [AnyFieldDescription]
+        //     = &[introwospect_over(Type::OwnerType, Type::FieldsType, self)];
         let fields: &'static [AnyFieldDescriptor] = &[];
         AnyVariantDescriptor {
             name: Type::NAME,
@@ -1211,15 +1353,6 @@ impl VariantDescriptorVisitor for ToAnyDescriptorVisitor {
             attributes: Type::ATTRIBUTES,
         }
     }
-}
-
-impl AdtDescriptor for NoType {
-    const ID: AdtId = AdtId::Struct;
-    const NAME: &'static str = "core::introwospection::NoType";
-}
-
-impl StructDescriptor for NoType {
-    type Type = NoType;
 }
 
 impl Debug for NoType {
@@ -1270,4 +1403,194 @@ impl Display for AdtId {
             AdtId::Function => Display::fmt("fn (...)", f),
         }
     }
+}
+
+// NoType / none indicator type
+unsafe impl AdtDescriptor for NoType {
+    const ID: AdtId = AdtId::Struct;
+    const NAME: &'static str = type_name::<NoType>();
+}
+
+unsafe impl StructDescriptor for NoType {
+    type Type = NoType;
+}
+
+// slices
+unsafe impl<'slice_life, T> AdtDescriptor for &'slice_life [T] {
+    const ID: AdtId = AdtId::Slice;
+    const NAME: &'static str = type_name::<[T]>();
+}
+
+unsafe impl<'slice_life, T> SliceDescriptor for &'slice_life [T] {
+    type Type = &'slice_life [T];
+    type ElementType = T;
+}
+
+// array
+unsafe impl<'array_life, T, const N: usize> AdtDescriptor for &'array_life [T; N] {
+    const ID: AdtId = AdtId::Array;
+    const NAME: &'static str = type_name::<[T; N]>();
+}
+
+unsafe impl<'array_life, T, const N: usize> ArrayDescriptor for &'array_life [T; N] {
+    type Type = &'array_life [T; N];
+    type ElementType = T;
+}
+
+unsafe impl<T, const N: usize> AdtDescriptor for [T; N] {
+    const ID: AdtId = AdtId::Array;
+    const NAME: &'static str = type_name::<[T; N]>();
+}
+
+unsafe impl<T, const N: usize> ArrayDescriptor for [T; N] {
+    type Type = [T; N];
+    type ElementType = T;
+}
+
+// 0-tuple / unit
+unsafe impl AdtDescriptor for () {
+    const ID: AdtId = AdtId::Slice;
+    const NAME: &'static str = type_name::<()>();
+}
+
+unsafe impl TupleDescriptor for () {
+    type Type = ();
+}
+
+// 1-tuple
+unsafe impl<T0> AdtDescriptor for (T0,) {
+    const ID: AdtId = AdtId::Tuple;
+    const NAME: &'static str = type_name::<(T0,)>();
+}
+
+unsafe impl<T0> FieldDescriptor<0> for (T0,) {
+    type OwnerType = (T0,);
+    type Type = T0;
+    const NAME: &'static str = "0";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0,), .0);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0> TupleDescriptor for (T0,) {
+    type FieldsType = (T0,);
+    type Type = (T0,);
+    const FIELD_COUNT: usize = 1;
+}
+
+// 2-tuple
+unsafe impl<T0, T1> AdtDescriptor for (T0, T1) {
+    const ID: AdtId = AdtId::Tuple;
+    const NAME: &'static str = type_name::<(T0, T1)>();
+}
+
+unsafe impl<T0, T1> FieldDescriptor<0> for (T0, T1) {
+    type OwnerType = (T0, T1);
+    type Type = T0;
+    const NAME: &'static str = "0";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1), .0);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1> FieldDescriptor<1> for (T0, T1) {
+    type OwnerType = (T0, T1);
+    type Type = T1;
+    const NAME: &'static str = "1";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0), .1);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1> TupleDescriptor for (T0, T1) {
+    type FieldsType = (T0, T1);
+    type Type = (T0, T1);
+    const FIELD_COUNT: usize = 2;
+}
+
+// 3-tuple
+unsafe impl<T0, T1, T2> AdtDescriptor for (T0, T1, T2) {
+    const ID: AdtId = AdtId::Tuple;
+    const NAME: &'static str = type_name::<(T0, T1, T2)>();
+}
+
+unsafe impl<T0, T1, T2> FieldDescriptor<0> for (T0, T1, T2) {
+    type OwnerType = (T0, T1, T2);
+    type Type = T0;
+    const NAME: &'static str = "0";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .0);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1, T2> FieldDescriptor<1> for (T0, T1, T2) {
+    type OwnerType = (T0, T1, T2);
+    type Type = T1;
+    const NAME: &'static str = "1";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .1);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1, T2> FieldDescriptor<2> for (T0, T1, T2) {
+    type OwnerType = (T0, T1, T2);
+    type Type = T2;
+    const NAME: &'static str = "2";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .2);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1, T2> TupleDescriptor for (T0, T1, T2) {
+    type FieldsType = (T0, T1, T2);
+    type Type = (T0, T1, T2);
+    const FIELD_COUNT: usize = 3;
+}
+
+// 4-tuple
+unsafe impl<T0, T1, T2, T3> AdtDescriptor for (T0, T1, T2, T3) {
+    const ID: AdtId = AdtId::Tuple;
+    const NAME: &'static str = type_name::<(T0, T1, T2, T3)>();
+}
+
+unsafe impl<T0, T1, T2, T3> FieldDescriptor<0> for (T0, T1, T2, T3) {
+    type OwnerType = (T0, T1, T2, T3);
+    type Type = T0;
+    const NAME: &'static str = "0";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .0);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1, T2, T3> FieldDescriptor<1> for (T0, T1, T2, T3) {
+    type OwnerType = (T0, T1, T2, T3);
+    type Type = T1;
+    const NAME: &'static str = "1";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .1);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1, T2, T3> FieldDescriptor<2> for (T0, T1, T2, T3) {
+    type OwnerType = (T0, T1, T2, T3);
+    type Type = T2;
+    const NAME: &'static str = "2";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .2);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1, T2, T3> FieldDescriptor<3> for (T0, T1, T2, T3) {
+    type OwnerType = (T0, T1, T2, T3);
+    type Type = T3;
+    const NAME: &'static str = "3";
+    // TODO(thephd):
+    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .3);
+    const BYTE_OFFSET: usize = 0;
+}
+
+unsafe impl<T0, T1, T2, T3> TupleDescriptor for (T0, T1, T2, T3) {
+    type FieldsType = (T0, T1, T2, T3);
+    type Type = (T0, T1, T2, T3);
+    const FIELD_COUNT: usize = 4;
 }
