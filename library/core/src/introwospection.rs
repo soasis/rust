@@ -495,7 +495,7 @@ pub unsafe trait FieldDescriptor<const DECLARATION_INDEX: usize> {
     const DECLARATION_INDEX: usize = DECLARATION_INDEX;
     /// The name of the field within the union, variant, tuple, or structure. If this is empty, it
     /// signifies a completely unnamed field. If this is part of a tuple-like field syntax,
-    /// then the name of the field will not be empty, but instead be `.0` or similar.
+    /// then the name of the field will not be empty, but instead be `0` or similar.
     const NAME: &'static str;
     /// The byte offset from the base of an owner type object to the data type of this field.
     const BYTE_OFFSET: usize;
@@ -1139,7 +1139,7 @@ pub struct AnyFieldDescriptor {
     pub declaration_index: usize,
     /// The name of the field within the union, variant, or structure. If this is empty, it
     /// signifies an completely unnamed field. If this is part of a tuple-like field syntax,
-    /// then the name of the field will not be empty, but instead be `.0` or similar.
+    /// then the name of the field will not be empty, but instead be `0` or similar.
     pub name: &'static str,
     /// The byte offset from the base of an owner type object to the data type of this field.
     pub byte_offset: usize,
@@ -1581,7 +1581,7 @@ unsafe impl<T0> FieldDescriptor<0> for (T0,) {
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = offset_of!((T0,), .0);
+    const BYTE_OFFSET: usize = offset_of!((T0,), 0);
 }
 
 unsafe impl<T0> TupleDescriptor for (T0,) {
@@ -1602,7 +1602,7 @@ unsafe impl<T0, T1> FieldDescriptor<0> for (T0, T1) {
     const NAME: &'static str = "0";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1), .0);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1), 0);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1613,7 +1613,7 @@ unsafe impl<T0, T1> FieldDescriptor<1> for (T0, T1) {
     const NAME: &'static str = "1";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0), .1);
+    const BYTE_OFFSET: usize = offset_of!((T0,), 1);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1636,7 +1636,7 @@ unsafe impl<T0, T1, T2> FieldDescriptor<0> for (T0, T1, T2) {
     const NAME: &'static str = "0";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .0);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1, T2), 0);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1647,7 +1647,7 @@ unsafe impl<T0, T1, T2> FieldDescriptor<1> for (T0, T1, T2) {
     const NAME: &'static str = "1";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .1);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1, T2), 1);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1658,7 +1658,7 @@ unsafe impl<T0, T1, T2> FieldDescriptor<2> for (T0, T1, T2) {
     const NAME: &'static str = "2";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .2);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1, T2), 2);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1681,7 +1681,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<0> for (T0, T1, T2, T3) {
     const NAME: &'static str = "0";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .0);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1, T2, T3), 0);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1692,7 +1692,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<1> for (T0, T1, T2, T3) {
     const NAME: &'static str = "1";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .1);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1, T2, T3), 1);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1703,7 +1703,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<2> for (T0, T1, T2, T3) {
     const NAME: &'static str = "2";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .2);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1, T2, T3), 2);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
@@ -1714,7 +1714,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<3> for (T0, T1, T2, T3) {
     const NAME: &'static str = "3";
     // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
     #[cfg(not(bootstrap))]
-    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .3);
+    const BYTE_OFFSET: usize = offset_of!((T0, T1, T2, T3), 3);
     #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
