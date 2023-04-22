@@ -108,7 +108,7 @@
 //!             Type::NAME,
 //!             Type::FIELD_COUNT);
 //!         // now, introspect over the fields of this type.
-//!         ( introwospect_over(Type::Type, Type::FieldsType, self) );
+//!         ( introwospect_over(Type::Type, Type::Fields, self) );
 //!     }
 //! }
 //!
@@ -164,7 +164,7 @@
 //!             Type::NAME,
 //!             Type::FIELD_COUNT);
 //!         // now, introspect over the fields of this type.
-//!         ( introwospect_over(Type::Type, Type::FieldsType, self) );
+//!         ( introwospect_over(Type::Type, Type::Fields, self) );
 //!     }
 //! }
 //!
@@ -320,25 +320,49 @@ pub unsafe trait AdtDescriptor {
 
 /// A description of a structure or union type.
 pub unsafe trait StructDescriptor: AdtDescriptor {
-    /// The type of the `struct` or `union` that was described.
+    /// The type of the `struct` that was described.
     type Type;
-    /// A type that represents the fields of this structure. If this is
+    /// A type that represents the fields of this `struct`. If this is
     /// `core::introwospection::NoType`, then it has no fields and no field
     /// implementations on it.
     ///
     /// NOTE
     /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
     /// ```
-    /// type FieldsType :
+    /// type Fields :
     ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
     /// = NoType;
     /// ```
     /// to specify the proper boundaries to make this type usable in generic contexts. (This is
     /// bikeshed syntax and subject to change, as there is already a `for <T>` feature in Rust.)
-    type FieldsType = NoType;
+    type Fields = NoType;
     /// The number of fields for this structure or union type.
     const FIELD_COUNT: usize = 0;
-    /// Whether or not there are any fields which are not visible to this type.
+    /// Whether or not there are any fields which are not visible for this type.
+    const NON_VISIBLE_FIELDS: bool = false;
+}
+
+/// A description of a union type.
+pub unsafe trait UnionDescriptor: AdtDescriptor {
+    /// The type of the `union` that was described.
+    type Type;
+    /// A type that represents the fields of this `union`. If this is
+    /// `core::introwospection::NoType`, then it has no fields and no field
+    /// implementations on it.
+    ///
+    /// NOTE
+    /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
+    /// ```
+    /// type Fields :
+    ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
+    /// = NoType;
+    /// ```
+    /// to specify the proper boundaries to make this type usable in generic contexts. (This is
+    /// bikeshed syntax and subject to change, as there is already a `for <T>` feature in Rust.)
+    type Fields = NoType;
+    /// The number of fields for this `union` type.
+    const FIELD_COUNT: usize = 0;
+    /// Whether or not there are any fields which are not visible for this type.
     const NON_VISIBLE_FIELDS: bool = false;
 }
 
@@ -352,13 +376,13 @@ pub unsafe trait EnumDescriptor: AdtDescriptor {
     /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
     ///
     /// ```
-    /// type VariantsType :
+    /// type Variants :
     ///     (for <const I: usize = 0..Self::VARIANT_COUNT> VariantDescriptor<I>)
     /// = NoType;
     /// ```
     /// doing this would allow it to be acted upon in a meaningful fashion by generic code,
     /// but such bounds/constraint technology does not exist yet.
-    type VariantsType = NoType;
+    type Variants = NoType;
     /// The number of variants for this enumeration.
     const VARIANT_COUNT: usize = 0;
 }
@@ -373,13 +397,13 @@ pub unsafe trait FunctionDescriptor: AdtDescriptor {
     /// NOTE
     /// TODO(thephd) Enable a succinct way to describe all of the constraints on this type:
     /// ```
-    /// type ParametersType :
+    /// type Parameters :
     ///     (for <const I: usize = 0..Self::PARAMETER_COUNT> ParameterDescriptor<I>)
     /// = NoType;
     /// ```
     /// to specify the proper boundaries to make this type usable in generic contexts. (This is
     /// bikeshed syntax and subject to change, as there is already a `for <T>` feature in Rust.)
-    type ParametersType = NoType;
+    type Parameters = NoType;
     /// The return type of of the function.
     type ReturnType;
     /// The number of parameters in the function. Note that a pattern constitutes a
@@ -392,7 +416,7 @@ pub unsafe trait ArrayDescriptor: AdtDescriptor {
     /// The full type of the array.
     type Type;
     /// The element type of the array.
-    type ElementType;
+    type Element;
     /// The number of parameters in the function. Note that a pattern constitutes a
     /// single parameter.
     const ELEMENT_COUNT: usize = 0;
@@ -403,7 +427,7 @@ pub unsafe trait SliceDescriptor: AdtDescriptor {
     /// The full type of the slice.
     type Type;
     /// The element type of the slice.
-    type ElementType;
+    type Element;
 }
 
 /// A description of a built-in tuple type.
@@ -417,13 +441,13 @@ pub unsafe trait TupleDescriptor: AdtDescriptor {
     /// NOTE
     /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
     /// ```
-    /// type FieldsType :
+    /// type Fields :
     ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
     /// = NoType;
     /// ```
     /// to specify the proper boundaries to make this type usable in generic contexts. (This is
     /// bikeshed syntax and subject to change, as there is already a `for <T>` feature in Rust.)
-    type FieldsType = NoType;
+    type Fields = NoType;
     /// The number of fields contained in this tuple.
     const FIELD_COUNT: usize = 0;
 }
@@ -431,7 +455,7 @@ pub unsafe trait TupleDescriptor: AdtDescriptor {
 /// A parameter for a function definition, or similar construction.
 pub unsafe trait ParameterDescriptor<const PARAMETER_INDEX: usize> {
     /// The function type related to this parameter descriptor.
-    type OwnerType;
+    type Owner;
     /// The type of the function parameter.
     type Type;
     /// The 0-based declaration (source code) index.
@@ -461,8 +485,8 @@ pub unsafe trait ParameterDescriptor<const PARAMETER_INDEX: usize> {
 pub unsafe trait FieldDescriptor<const DECLARATION_INDEX: usize> {
     /// The type that owns this field. It may be any abstract data type union, a variant,
     /// tuple, or a structure type. All (byte) offsets are from the base of an
-    /// `Self::OwnerType` object.
-    type OwnerType;
+    /// `Self::Owner` object.
+    type Owner;
     /// The data type of the field itself.
     type Type;
     /// The 0-based declaration (source code) index.
@@ -493,31 +517,31 @@ pub unsafe trait FieldDescriptor<const DECLARATION_INDEX: usize> {
 /// `DECLARATION_INDEX` is the index of the variant in declaration (source code) order.
 pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// The type which owns this variant.
-    type OwnerType: 'static + EnumDescriptor;
+    type Owner: 'static + EnumDescriptor;
     /// A type that represents the fields of this enumeration's variant. If this
     /// is `core::introwospection::NoType`, then it has no implementations of a field.
     ///
     /// NOTE
     /// TODO(thephd) Enable a succinct way to describe all of the constraints on this type:
     /// ```
-    /// type FieldsType :
+    /// type Fields :
     ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
     /// = NoType;
     /// ```
     /// to specify the proper boundaries to make this type usable in generic contexts. (This is
     /// bikeshed syntax and subject to change, as there is already a `for <T>` feature in Rust.)
-    type FieldsType = NoType;
+    type Fields = NoType;
     /// The integer type that is used for this declaration if it was declared with the representation
-    /// attribute, `#[repr(IntType)]`. Used in conjunction with the `INTEGER_VALUE` associated
+    /// attribute, `#[repr(Int)]`. Used in conjunction with the `INTEGER_VALUE` associated
     /// `const` item.
-    type IntType: 'static = NoType;
+    type Int: 'static = NoType;
     /// The 0-based index of the variant in declaration (source code) order.
     const DECLARATION_INDEX: usize = DECLARATION_INDEX;
     /// The name of the variant within the enumeration.
     const NAME: &'static str;
     /// The discriminant that identifies this variant of the data type. The discriminant can
     /// be used when looping over all fields to find which variant of an enumeration is the
-    /// currently active variant. Then, the `FieldsType` or `INTEGER_VALUE` -- if present --
+    /// currently active variant. Then, the `Fields` or `INTEGER_VALUE` -- if present --
     /// can be used to deduce the fields at the specific offset from an object of the enumeration
     /// type, or can be used to get the constant integer value of this variant in the enumeration,
     /// respectively.
@@ -525,20 +549,20 @@ pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// NOTE(
     /// TODO(thephd)) Enable supporting the intrinsic:
     /// ```
-    /// const DISCRIMINANT : &'static Discriminant<Self::OwnerType> =
-    ///      &std::mem::discriminant_at<Self::OwnerType>(Self::DECLARATION_INDEX);
+    /// const DISCRIMINANT : &'static Discriminant<Self::Owner> =
+    ///      &std::mem::discriminant_at<Self::Owner>(Self::DECLARATION_INDEX);
     /// ```
     /// to get a discriminant at compile-time without needing to generate a fake
     /// enumeration object.
-    const DISCRIMINANT: &'static Discriminant<Self::OwnerType>;
-    /// The number of field descriptors associated with the `FieldsType` type and this variant.
+    const DISCRIMINANT: &'static Discriminant<Self::Owner>;
+    /// The number of field descriptors associated with the `Fields` type and this variant.
     /// `FIELD_COUNT` and `FielsdType` can be used if `FIELD_COUNT` is zero
     const FIELD_COUNT: usize = 0;
-    /// The value of an enumeration which opts into a `#[repr(IntType)]` representation.
+    /// The value of an enumeration which opts into a `#[repr(Int)]` representation.
     /// If the enumeration has not opted into such a representation, then this will be
-    /// `None`. Otherwise, `Self::IntType` will be set to the integer type specified in the
+    /// `None`. Otherwise, `Self::Int` will be set to the integer type specified in the
     /// representation attribute and the value of the enumeration will be stored here.
-    const INTEGER_VALUE: Option<&'static Self::IntType> = None;
+    const INTEGER_VALUE: Option<&'static Self::Int> = None;
     /// The introwospection attributes (`#[introwospection(...)`]) attached to this entity.
     /// These are attributes capable of being used for compile-time introspection, such as for
     /// marking a field as non-serializable or noting specific intended behaviors for a function
@@ -556,10 +580,10 @@ pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize> {
 /// A visitor on a `StructDescriptor` trait implementation, to handle the compile-time
 /// data stored on such a trait implementation.
 pub trait TupleDescriptorVisitor {
-    /// The return type of the `visit_enum` and `visit_enum_mut` implementations.
+    /// The return type of the `visit_tuple` and `visit_tuple_mut` implementations.
     type Output;
 
-    /// A visitation function for a specific `StructDescriptor` type. This form
+    /// A visitation function for a specific `TupleDescriptor` type. This form
     /// is immutable, and so cannot modify its `self` argument.
     ///
     /// Returns `Self::Output`
@@ -567,8 +591,8 @@ pub trait TupleDescriptorVisitor {
     where
         Type: TupleDescriptor;
 
-    /// A visitation function for a specific `StructDescriptor` type. This form
-    /// is mutable, and by default calls `Self::visit_struct::<Type>(&self)`.
+    /// A visitation function for a specific `TupleDescriptor` type. This form
+    /// is mutable, and by default calls `Self::visit_tuple::<Type>(&self)`.
     ///
     /// Returns `Self::Output`
     fn visit_tuple_mut<Type: 'static>(&mut self) -> Self::Output
@@ -579,13 +603,13 @@ pub trait TupleDescriptorVisitor {
     }
 }
 
-/// A visitor on a `StructDescriptor` trait implementation, to handle the compile-time
+/// A visitor on a `SliceDescriptor` trait implementation, to handle the compile-time
 /// data stored on such a trait implementation.
 pub trait SliceDescriptorVisitor {
-    /// The return type of the `visit_enum` and `visit_enum_mut` implementations.
+    /// The return type of the `visit_slice` and `visit_slice_mut` implementations.
     type Output;
 
-    /// A visitation function for a specific `StructDescriptor` type. This form
+    /// A visitation function for a specific `SliceDescriptor` type. This form
     /// is immutable, and so cannot modify its `self` argument.
     ///
     /// Returns `Self::Output`
@@ -593,8 +617,8 @@ pub trait SliceDescriptorVisitor {
     where
         Type: SliceDescriptor;
 
-    /// A visitation function for a specific `StructDescriptor` type. This form
-    /// is mutable, and by default calls `Self::visit_struct::<Type>(&self)`.
+    /// A visitation function for a specific `SliceDescriptor` type. This form
+    /// is mutable, and by default calls `Self::visit_slice::<Type>(&self)`.
     ///
     /// Returns `Self::Output`
     fn visit_slice_mut<Type: 'static>(&mut self) -> Self::Output
@@ -605,13 +629,13 @@ pub trait SliceDescriptorVisitor {
     }
 }
 
-/// A visitor on a `StructDescriptor` trait implementation, to handle the compile-time
+/// A visitor on a `ArrayDescriptor` trait implementation, to handle the compile-time
 /// data stored on such a trait implementation.
 pub trait ArrayDescriptorVisitor {
-    /// The return type of the `visit_enum` and `visit_enum_mut` implementations.
+    /// The return type of the `visit_array` and `visit_array_mut` implementations.
     type Output;
 
-    /// A visitation function for a specific `StructDescriptor` type. This form
+    /// A visitation function for a specific `ArrayDescriptor` type. This form
     /// is immutable, and so cannot modify its `self` argument.
     ///
     /// Returns `Self::Output`
@@ -619,8 +643,8 @@ pub trait ArrayDescriptorVisitor {
     where
         Type: ArrayDescriptor;
 
-    /// A visitation function for a specific `StructDescriptor` type. This form
-    /// is mutable, and by default calls `Self::visit_struct::<Type>(&self)`.
+    /// A visitation function for a specific `ArrayDescriptor` type. This form
+    /// is mutable, and by default calls `Self::visit_array::<Type>(&self)`.
     ///
     /// Returns `Self::Output`
     fn visit_array_mut<Type: 'static>(&mut self) -> Self::Output
@@ -631,10 +655,10 @@ pub trait ArrayDescriptorVisitor {
     }
 }
 
-/// A visitor on a `StructDescriptor` trait implementation, to handle the compile-time
+/// A visitor on a `ArrayDescriptor` trait implementation, to handle the compile-time
 /// data stored on such a trait implementation.
 pub trait StructDescriptorVisitor {
-    /// The return type of the `visit_enum` and `visit_enum_mut` implementations.
+    /// The return type of the `visit_struct` and `visit_struct_mut` implementations.
     type Output;
 
     /// A visitation function for a specific `StructDescriptor` type. This form
@@ -654,6 +678,32 @@ pub trait StructDescriptorVisitor {
         Type: StructDescriptor,
     {
         return Self::visit_struct::<Type>(&self);
+    }
+}
+
+/// A visitor on a `UnionDescriptor` trait implementation, to handle the compile-time
+/// data stored on such a trait implementation.
+pub trait UnionDescriptorVisitor {
+    /// The return type of the `visit_union` and `visit_union_mut` implementations.
+    type Output;
+
+    /// A visitation function for a specific `UnionDescriptor` type. This form
+    /// is immutable, and so cannot modify its `self` argument.
+    ///
+    /// Returns `Self::Output`
+    fn visit_union<Type: 'static>(&self) -> Self::Output
+    where
+        Type: UnionDescriptor;
+
+    /// A visitation function for a specific `UnionDescriptor` type. This form
+    /// is mutable, and by default calls `Self::visit_union::<Type>(&self)`.
+    ///
+    /// Returns `Self::Output`
+    fn visit_union_mut<Type: 'static>(&mut self) -> Self::Output
+    where
+        Type: UnionDescriptor,
+    {
+        return Self::visit_union::<Type>(&self);
     }
 }
 
@@ -883,32 +933,42 @@ pub trait VariantDescriptorVisitorAt<const DECLARATION_INDEX: usize> {
     }
 }
 
-/// A combination of all the other `core::introwospection::*Visitor` traits. This is
-/// used to ensure a visitor implements all of the required visitors for every type
-/// of entity, so that it can recurse down every type of reflectable entity.
-pub trait DescriptorVisitor:
-    FunctionDescriptorVisitor
-    + StructDescriptorVisitor
-    + EnumDescriptorVisitor
-    + ArrayDescriptorVisitor
-    + SliceDescriptorVisitor
-    + ParameterDescriptorVisitor
-    + FieldDescriptorVisitor
-    + VariantDescriptorVisitor
-{
-}
-
-/// A run-time description of a structure or union type.
+/// A run-time description of a structure type.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct AnyStructDescriptor {
-    /// The type of this sturcture (whether it is a union or a structure).
+    /// The type of this `struct`.
     pub adt_id: AdtId,
-    /// The type of the `struct` or `union` that was described.
+    /// The type of the `struct` that was described.
     pub type_id: TypeId,
-    /// The name of the `struct` or `union`.
+    /// The name of the `struct`.
     pub name: &'static str,
-    /// A slice describing each field of this `struct` or `union` type.
+    /// A slice describing each field of this `struct` type.
+    pub fields: &'static [AnyFieldDescriptor],
+    /// The introwospection attributes (`#[introwospection(...)`]) attached to this entity.
+    /// These are attributes capable of being used for compile-time introspection, such as for
+    /// marking a field as non-serializable or noting specific intended behaviors for a function
+    /// definition and the processing of its arguments.
+    ///
+    /// NOTE: only `introwospection` attributes are collected here. Other attributes are not,
+    /// as it is important for the author of a specific data type, function, or field to have
+    /// penultimate control of such attributes. (Individuals writing `*Visitor` types may alter
+    /// or ignore behavior for attributes, which gives final control to the individual writing
+    /// such visitor methods.)
+    pub attributes: &'static [AttributeDescriptor],
+}
+
+/// A run-time description of a structure type.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct AnyUnionDescriptor {
+    /// The type of this union.
+    pub adt_id: AdtId,
+    /// The type of the `union` that was described.
+    pub type_id: TypeId,
+    /// The name of the `union`.
+    pub name: &'static str,
+    /// A slice describing each field of this `union` type.
     pub fields: &'static [AnyFieldDescriptor],
     /// The introwospection attributes (`#[introwospection(...)`]) attached to this entity.
     /// These are attributes capable of being used for compile-time introspection, such as for
@@ -929,7 +989,7 @@ pub struct AnyStructDescriptor {
 pub struct AnyEnumDescriptor {
     /// The type of the `enum` that was described.
     pub type_id: TypeId,
-    /// The name of the enumeration.
+    /// The name of this `enum`.
     pub name: &'static str,
     /// A slice describing each variant of this `enum` type.
     pub variants: &'static [AnyVariantDescriptor],
@@ -950,9 +1010,9 @@ pub struct AnyEnumDescriptor {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct AnySliceDescriptor {
-    /// The type of the `enum` that was described.
+    /// The type of the slice that was described.
     pub type_id: TypeId,
-    /// The name of the enumeration.
+    /// The name of the slice.
     pub name: &'static str,
     /// The type of each element.
     pub element_type_id: TypeId,
@@ -1017,9 +1077,12 @@ pub struct AnyFunctionDescriptor {
 
 /// A run-time description of a possible data type.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum AnyAdtDescriptor {
-    /// A structure or union type.
+    /// A structure type.
     Struct(AnyStructDescriptor),
+    /// A union type.
+    Union(AnyUnionDescriptor),
     /// An enumeration type.
     Enum(AnyEnumDescriptor),
     /// An array type.
@@ -1036,8 +1099,8 @@ pub enum AnyAdtDescriptor {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct AnyParameterDescriptor {
-    /// A description fo the function tyoe that is related to this parameter.
-    pub owner_type: AnyFunctionDescriptor,
+    /// A description of the function tyoe that is related to this parameter.
+    pub owner_type_id: AnyFunctionDescriptor,
     /// The type of the function parameter.
     pub type_id: TypeId,
     /// The 0-based declaration (source code) index for the parameter.
@@ -1065,9 +1128,9 @@ pub struct AnyParameterDescriptor {
 #[non_exhaustive]
 pub struct AnyFieldDescriptor {
     /// The type that owns this field. It may be any abstract data type union, a variant,
-    /// or a structure type. All (byte) offsets are from the base of an `Self::OwnerType`
+    /// or a structure type. All (byte) offsets are from the base of an `Self::Owner`
     /// object.
-    pub owner_type: TypeId,
+    pub owner_type_id: TypeId,
     /// The data type of the field itself.
     pub type_id: TypeId,
     /// The 0-based declaration (source code) index.
@@ -1097,19 +1160,19 @@ pub struct AnyFieldDescriptor {
 #[non_exhaustive]
 pub struct AnyVariantDescriptor {
     /// The enumeration that owns this variant.
-    pub owner_type: TypeId,
+    pub owner_type_id: TypeId,
     /// The 0-based index of the variant in declaration (source code) order.
     pub declaration_index: usize,
     /// The name of the variant within the enumeration.
     pub name: &'static str,
     /// The fields that are part of this variant.
     pub fields: &'static [AnyFieldDescriptor],
-    /// A type-erased reference to a `Discriminant<T>` type. A user should check the `owner.type_id`
+    /// A type-erased reference to a `Discriminant<T>` type. A user should check the `owner_type_id`
     /// parameter to verify the proper type `T` for the containing data type, then cast this to
     /// the appropriate `Discriminant<T>` to use.
     pub discriminant: &'static dyn Any,
     /// A representation of any possible constant integer value of an enumeration which opts
-    /// into a `#[repr(IntType)]` representation. May refer to `core::introwospection::NoType`.
+    /// into a `#[repr(Int)]` representation. May refer to `core::introwospection::NoType`.
     pub integer_value: &'static dyn Any,
     /// The introwospection attributes (`#[introwospection(...)`]) attached to this entity.
     /// These are attributes capable of being used for compile-time introspection, such as for
@@ -1124,66 +1187,72 @@ pub struct AnyVariantDescriptor {
     pub attributes: &'static [AttributeDescriptor],
 }
 
-/// Returns a field of the given data type, offset from the owner type.
-pub const fn get_field<Type, const DECLARATION_INDEX: usize>(owner: &Type::OwnerType) -> &Type::Type
+/// Returns a field of the given data type, offset from the owner type. The returned field will
+/// be a non-mutable reference, just like the owner type.
+pub const fn get_field<Type, const DECLARATION_INDEX: usize>(owner: &Type::Owner) -> &Type::Type
 where
     Type: FieldDescriptor<DECLARATION_INDEX>,
 {
     unsafe {
-        ((owner as *const Type::OwnerType as *const u8).add(Type::BYTE_OFFSET).cast::<Type::Type>())
+        ((owner as *const Type::Owner as *const u8).add(Type::BYTE_OFFSET).cast::<Type::Type>())
             .as_ref()
             .unwrap_unchecked()
     }
 }
 
-/// Returns a field of the given data type, offset from the owner type.
+/// Returns a field of the given data type, offset from the owner type. The returned field will
+/// be a mutable reference, just like the owner type.
 pub const fn get_field_mut<Type, const DECLARATION_INDEX: usize>(
-    owner: &mut Type::OwnerType,
+    owner: &mut Type::Owner,
 ) -> &mut Type::Type
 where
     Type: FieldDescriptor<DECLARATION_INDEX>,
 {
     unsafe {
-        ((owner as *mut Type::OwnerType as *mut u8).add(Type::BYTE_OFFSET).cast::<Type::Type>())
+        ((owner as *mut Type::Owner as *mut u8).add(Type::BYTE_OFFSET).cast::<Type::Type>())
             .as_mut()
             .unwrap_unchecked()
     }
 }
 
-/// Returns a field of the given data type, offset from the owner type.
-pub const fn get_any_field<'life_owner, 'life_field, Type: 'static, OwnerType: 'static>(
-    field_descriptor: &'life_field AnyFieldDescriptor,
-    owner: &'life_owner OwnerType,
-) -> Option<&'life_owner Type> {
-    if field_descriptor.type_id != TypeId::of::<Type>()
-        || field_descriptor.owner_type != TypeId::of::<OwnerType>()
+/// Returns a field of the given data type, offset from the owner type, if the
+/// provided `Field` and `Owner` types matches what is stored in the `AnyFieldDescriptor`.
+/// The return field will be a non-mutable reference, just like the owner type.
+pub fn get_any_field<'owner_lifetime, 'field_lifetime, Field: 'static, Owner: 'static>(
+    field_descriptor: &'field_lifetime AnyFieldDescriptor,
+    owner: &'owner_lifetime Owner,
+) -> Option<&'owner_lifetime Field> {
+    if field_descriptor.type_id != TypeId::of::<Field>()
+        || field_descriptor.owner_type_id != TypeId::of::<Owner>()
     {
         return None;
     }
     unsafe {
         Some(
-            ((owner as *const OwnerType as *const u8)
+            ((owner as *const Owner as *const u8)
                 .add(field_descriptor.byte_offset)
-                .cast::<Type>())
+                .cast::<Field>())
             .as_ref()
             .unwrap_unchecked(),
         )
     }
 }
 
-/// Returns a field of the given data type, offset from the owner type.
-pub const fn get_any_field_mut<'life_owner, 'life_field, Type: 'static, OwnerType: 'static>(
-    field_descriptor: &'life_field AnyFieldDescriptor,
-    owner: &'life_owner mut OwnerType,
-) -> Option<&'life_owner mut Type> {
-    if field_descriptor.type_id != TypeId::of::<Type>()
-        || field_descriptor.owner_type != TypeId::of::<OwnerType>()
+/// Returns a field of the given data type, offset from the owner type, if the
+/// provided `Field` and `Owner` types matches what is stored in the `AnyFieldDescriptor`.
+/// The returned field will be a mutable reference, just like the owner type.
+pub fn get_any_field_mut<'owner_lifetime, 'field_lifetime, Field: 'static, Owner: 'static>(
+    field_descriptor: &'field_lifetime AnyFieldDescriptor,
+    owner: &'owner_lifetime mut Owner,
+) -> Option<&'owner_lifetime mut Field> {
+    if field_descriptor.type_id != TypeId::of::<Field>()
+        || field_descriptor.owner_type_id != TypeId::of::<Owner>()
     {
         return None;
     }
     unsafe {
         Some(
-            ((owner as *mut OwnerType as *mut u8).add(field_descriptor.byte_offset).cast::<Type>())
+            ((owner as *mut Owner as *mut u8).add(field_descriptor.byte_offset).cast::<Field>())
                 .as_mut()
                 .unwrap_unchecked(),
         )
@@ -1207,8 +1276,29 @@ impl StructDescriptorVisitor for ToAnyDescriptorVisitor {
         let fields: &'static [AnyFieldDescriptor] = &[];
         // TODO(thephd):
         // let fields : &'static [AnyFieldDescriptor]
-        //     = &[introwospect_over(Type::Type, Type::FieldsType, &self)];
+        //     = &[introwospect_over(Type::Type, Type::Fields, &self)];
         AnyStructDescriptor {
+            adt_id: Type::ID,
+            name: Type::NAME,
+            type_id: TypeId::of::<Type::Type>(),
+            fields,
+            attributes: Type::ATTRIBUTES,
+        }
+    }
+}
+
+impl UnionDescriptorVisitor for ToAnyDescriptorVisitor {
+    type Output = AnyUnionDescriptor;
+
+    fn visit_union<Type: 'static>(&self) -> Self::Output
+    where
+        Type: UnionDescriptor,
+    {
+        let fields: &'static [AnyFieldDescriptor] = &[];
+        // TODO(thephd):
+        // let fields : &'static [AnyFieldDescriptor]
+        //     = &[introwospect_over(Type::Type, Type::Fields, &self)];
+        AnyUnionDescriptor {
             adt_id: Type::ID,
             name: Type::NAME,
             type_id: TypeId::of::<Type::Type>(),
@@ -1228,7 +1318,7 @@ impl EnumDescriptorVisitor for ToAnyDescriptorVisitor {
         let variants: &'static [AnyVariantDescriptor] = &[];
         // TODO(thephd) fix to get compilation of:
         // let fields : &'static [AnyFieldDescriptor]
-        //     = &[introwospect_over(Type::Type, Type::FieldsType, &self)];
+        //     = &[introwospect_over(Type::Type, Type::Fields, &self)];
         AnyEnumDescriptor {
             name: Type::NAME,
             type_id: TypeId::of::<Type::Type>(),
@@ -1247,7 +1337,7 @@ impl FunctionDescriptorVisitor for ToAnyDescriptorVisitor {
     {
         // TODO(thephd) Allow compilation of:
         // let parameters: &'static [AnyParameterDescription]
-        //     = &[introwospect_over(Type::Type, Type::ParametersType, self)];
+        //     = &[introwospect_over(Type::Type, Type::Parameters, self)];
         let parameters: &'static [AnyParameterDescriptor] = &[];
         AnyFunctionDescriptor {
             name: Type::NAME,
@@ -1267,7 +1357,7 @@ impl TupleDescriptorVisitor for ToAnyDescriptorVisitor {
     {
         // TODO(thephd) Allow compilation of:
         // let fields: &'static [AnyFieldDescription]
-        //     = &[introwospect_over(Type::Type, Type::FieldsType, self)];
+        //     = &[introwospect_over(Type::Type, Type::Fields, self)];
         let fields: &'static [AnyFieldDescriptor] = &[];
         AnyTupleDescriptor {
             name: Type::NAME,
@@ -1288,7 +1378,7 @@ impl SliceDescriptorVisitor for ToAnyDescriptorVisitor {
         AnySliceDescriptor {
             name: Type::NAME,
             type_id: TypeId::of::<Type>(),
-            element_type_id: TypeId::of::<Type::ElementType>(),
+            element_type_id: TypeId::of::<Type::Element>(),
             attributes: &[],
         }
     }
@@ -1304,7 +1394,7 @@ impl ArrayDescriptorVisitor for ToAnyDescriptorVisitor {
         AnyArrayDescriptor {
             name: Type::NAME,
             type_id: TypeId::of::<Type>(),
-            element_type_id: TypeId::of::<Type::ElementType>(),
+            element_type_id: TypeId::of::<Type::Element>(),
             element_count: Type::ELEMENT_COUNT,
             attributes: &[],
         }
@@ -1320,7 +1410,7 @@ impl FieldDescriptorVisitor for ToAnyDescriptorVisitor {
     {
         AnyFieldDescriptor {
             name: Type::NAME,
-            owner_type: TypeId::of::<Type::OwnerType>(),
+            owner_type_id: TypeId::of::<Type::Owner>(),
             type_id: TypeId::of::<Type>(),
             declaration_index: DECLARATION_INDEX,
             byte_offset: Type::BYTE_OFFSET,
@@ -1338,11 +1428,11 @@ impl VariantDescriptorVisitor for ToAnyDescriptorVisitor {
     {
         // TODO(thephd) Enable syntax for iterating over fields
         // let fields: &'static [AnyFieldDescription]
-        //     = &[introwospect_over(Type::OwnerType, Type::FieldsType, self)];
+        //     = &[introwospect_over(Type::Owner, Type::Fields, self)];
         let fields: &'static [AnyFieldDescriptor] = &[];
         AnyVariantDescriptor {
             name: Type::NAME,
-            owner_type: TypeId::of::<Type::OwnerType>(),
+            owner_type_id: TypeId::of::<Type::Owner>(),
             discriminant: Type::DISCRIMINANT as &'static dyn Any,
             declaration_index: DECLARATION_INDEX,
             fields,
@@ -1415,26 +1505,36 @@ unsafe impl StructDescriptor for NoType {
     type Type = NoType;
 }
 
+// NoType / none indicator type
+unsafe impl<'life> AdtDescriptor for &'life NoType {
+    const ID: AdtId = AdtId::Struct;
+    const NAME: &'static str = type_name::<&'life NoType>();
+}
+
+unsafe impl<'life> StructDescriptor for &'life NoType {
+    type Type = &'life NoType;
+}
+
 // slices
-unsafe impl<'slice_life, T> AdtDescriptor for &'slice_life [T] {
+unsafe impl<'slice_lifetime, T> AdtDescriptor for &'slice_lifetime [T] {
     const ID: AdtId = AdtId::Slice;
     const NAME: &'static str = type_name::<[T]>();
 }
 
-unsafe impl<'slice_life, T> SliceDescriptor for &'slice_life [T] {
-    type Type = &'slice_life [T];
-    type ElementType = T;
+unsafe impl<'slice_lifetime, T> SliceDescriptor for &'slice_lifetime [T] {
+    type Type = &'slice_lifetime [T];
+    type Element = T;
 }
 
 // array
-unsafe impl<'array_life, T, const N: usize> AdtDescriptor for &'array_life [T; N] {
+unsafe impl<'array_lifetime, T, const N: usize> AdtDescriptor for &'array_lifetime [T; N] {
     const ID: AdtId = AdtId::Array;
     const NAME: &'static str = type_name::<[T; N]>();
 }
 
-unsafe impl<'array_life, T, const N: usize> ArrayDescriptor for &'array_life [T; N] {
-    type Type = &'array_life [T; N];
-    type ElementType = T;
+unsafe impl<'array_lifetime, T, const N: usize> ArrayDescriptor for &'array_lifetime [T; N] {
+    type Type = &'array_lifetime [T; N];
+    type Element = T;
 }
 
 unsafe impl<T, const N: usize> AdtDescriptor for [T; N] {
@@ -1444,17 +1544,25 @@ unsafe impl<T, const N: usize> AdtDescriptor for [T; N] {
 
 unsafe impl<T, const N: usize> ArrayDescriptor for [T; N] {
     type Type = [T; N];
-    type ElementType = T;
+    type Element = T;
 }
 
 // 0-tuple / unit
 unsafe impl AdtDescriptor for () {
-    const ID: AdtId = AdtId::Slice;
+    const ID: AdtId = AdtId::Tuple;
     const NAME: &'static str = type_name::<()>();
 }
 
 unsafe impl TupleDescriptor for () {
     type Type = ();
+}
+unsafe impl<'lifetime> AdtDescriptor for &'lifetime () {
+    const ID: AdtId = AdtId::Tuple;
+    const NAME: &'static str = type_name::<&'lifetime ()>();
+}
+
+unsafe impl<'lifetime> TupleDescriptor for &'lifetime () {
+    type Type = &'lifetime ();
 }
 
 // 1-tuple
@@ -1464,7 +1572,7 @@ unsafe impl<T0> AdtDescriptor for (T0,) {
 }
 
 unsafe impl<T0> FieldDescriptor<0> for (T0,) {
-    type OwnerType = (T0,);
+    type Owner = (T0,);
     type Type = T0;
     const NAME: &'static str = "0";
     // TODO(thephd):
@@ -1473,7 +1581,7 @@ unsafe impl<T0> FieldDescriptor<0> for (T0,) {
 }
 
 unsafe impl<T0> TupleDescriptor for (T0,) {
-    type FieldsType = (T0,);
+    type Fields = (T0,);
     type Type = (T0,);
     const FIELD_COUNT: usize = 1;
 }
@@ -1485,7 +1593,7 @@ unsafe impl<T0, T1> AdtDescriptor for (T0, T1) {
 }
 
 unsafe impl<T0, T1> FieldDescriptor<0> for (T0, T1) {
-    type OwnerType = (T0, T1);
+    type Owner = (T0, T1);
     type Type = T0;
     const NAME: &'static str = "0";
     // TODO(thephd):
@@ -1494,7 +1602,7 @@ unsafe impl<T0, T1> FieldDescriptor<0> for (T0, T1) {
 }
 
 unsafe impl<T0, T1> FieldDescriptor<1> for (T0, T1) {
-    type OwnerType = (T0, T1);
+    type Owner = (T0, T1);
     type Type = T1;
     const NAME: &'static str = "1";
     // TODO(thephd):
@@ -1503,7 +1611,7 @@ unsafe impl<T0, T1> FieldDescriptor<1> for (T0, T1) {
 }
 
 unsafe impl<T0, T1> TupleDescriptor for (T0, T1) {
-    type FieldsType = (T0, T1);
+    type Fields = (T0, T1);
     type Type = (T0, T1);
     const FIELD_COUNT: usize = 2;
 }
@@ -1515,7 +1623,7 @@ unsafe impl<T0, T1, T2> AdtDescriptor for (T0, T1, T2) {
 }
 
 unsafe impl<T0, T1, T2> FieldDescriptor<0> for (T0, T1, T2) {
-    type OwnerType = (T0, T1, T2);
+    type Owner = (T0, T1, T2);
     type Type = T0;
     const NAME: &'static str = "0";
     // TODO(thephd):
@@ -1524,7 +1632,7 @@ unsafe impl<T0, T1, T2> FieldDescriptor<0> for (T0, T1, T2) {
 }
 
 unsafe impl<T0, T1, T2> FieldDescriptor<1> for (T0, T1, T2) {
-    type OwnerType = (T0, T1, T2);
+    type Owner = (T0, T1, T2);
     type Type = T1;
     const NAME: &'static str = "1";
     // TODO(thephd):
@@ -1533,7 +1641,7 @@ unsafe impl<T0, T1, T2> FieldDescriptor<1> for (T0, T1, T2) {
 }
 
 unsafe impl<T0, T1, T2> FieldDescriptor<2> for (T0, T1, T2) {
-    type OwnerType = (T0, T1, T2);
+    type Owner = (T0, T1, T2);
     type Type = T2;
     const NAME: &'static str = "2";
     // TODO(thephd):
@@ -1542,7 +1650,7 @@ unsafe impl<T0, T1, T2> FieldDescriptor<2> for (T0, T1, T2) {
 }
 
 unsafe impl<T0, T1, T2> TupleDescriptor for (T0, T1, T2) {
-    type FieldsType = (T0, T1, T2);
+    type Fields = (T0, T1, T2);
     type Type = (T0, T1, T2);
     const FIELD_COUNT: usize = 3;
 }
@@ -1554,7 +1662,7 @@ unsafe impl<T0, T1, T2, T3> AdtDescriptor for (T0, T1, T2, T3) {
 }
 
 unsafe impl<T0, T1, T2, T3> FieldDescriptor<0> for (T0, T1, T2, T3) {
-    type OwnerType = (T0, T1, T2, T3);
+    type Owner = (T0, T1, T2, T3);
     type Type = T0;
     const NAME: &'static str = "0";
     // TODO(thephd):
@@ -1563,7 +1671,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<0> for (T0, T1, T2, T3) {
 }
 
 unsafe impl<T0, T1, T2, T3> FieldDescriptor<1> for (T0, T1, T2, T3) {
-    type OwnerType = (T0, T1, T2, T3);
+    type Owner = (T0, T1, T2, T3);
     type Type = T1;
     const NAME: &'static str = "1";
     // TODO(thephd):
@@ -1572,7 +1680,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<1> for (T0, T1, T2, T3) {
 }
 
 unsafe impl<T0, T1, T2, T3> FieldDescriptor<2> for (T0, T1, T2, T3) {
-    type OwnerType = (T0, T1, T2, T3);
+    type Owner = (T0, T1, T2, T3);
     type Type = T2;
     const NAME: &'static str = "2";
     // TODO(thephd):
@@ -1581,7 +1689,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<2> for (T0, T1, T2, T3) {
 }
 
 unsafe impl<T0, T1, T2, T3> FieldDescriptor<3> for (T0, T1, T2, T3) {
-    type OwnerType = (T0, T1, T2, T3);
+    type Owner = (T0, T1, T2, T3);
     type Type = T3;
     const NAME: &'static str = "3";
     // TODO(thephd):
@@ -1590,7 +1698,7 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<3> for (T0, T1, T2, T3) {
 }
 
 unsafe impl<T0, T1, T2, T3> TupleDescriptor for (T0, T1, T2, T3) {
-    type FieldsType = (T0, T1, T2, T3);
+    type Fields = (T0, T1, T2, T3);
     type Type = (T0, T1, T2, T3);
     const FIELD_COUNT: usize = 4;
 }
