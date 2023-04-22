@@ -168,6 +168,7 @@
 #![feature(ip)]
 #![feature(is_ascii_octdigit)]
 #![feature(maybe_uninit_uninit_array)]
+#![cfg_attr(not(bootstrap), feature(offset_of))]
 #![feature(ptr_alignment_type)]
 #![feature(ptr_metadata)]
 #![feature(set_ptr_value)]

@@ -222,6 +222,8 @@
 use crate::any::type_name;
 use crate::any::{Any, TypeId};
 use crate::fmt::{Debug, Display, Formatter, Result};
+#[cfg(not(bootstrap))]
+use crate::mem::offset_of;
 use crate::mem::Discriminant;
 use crate::option::Option;
 
@@ -1575,9 +1577,11 @@ unsafe impl<T0> FieldDescriptor<0> for (T0,) {
     type Owner = (T0,);
     type Type = T0;
     const NAME: &'static str = "0";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0,), .0);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = offset_of!((T0,), .0);
 }
 
 unsafe impl<T0> TupleDescriptor for (T0,) {
@@ -1596,8 +1600,10 @@ unsafe impl<T0, T1> FieldDescriptor<0> for (T0, T1) {
     type Owner = (T0, T1);
     type Type = T0;
     const NAME: &'static str = "0";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1), .0);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1), .0);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1605,8 +1611,10 @@ unsafe impl<T0, T1> FieldDescriptor<1> for (T0, T1) {
     type Owner = (T0, T1);
     type Type = T1;
     const NAME: &'static str = "1";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0), .1);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0), .1);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1626,8 +1634,10 @@ unsafe impl<T0, T1, T2> FieldDescriptor<0> for (T0, T1, T2) {
     type Owner = (T0, T1, T2);
     type Type = T0;
     const NAME: &'static str = "0";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .0);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .0);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1635,8 +1645,10 @@ unsafe impl<T0, T1, T2> FieldDescriptor<1> for (T0, T1, T2) {
     type Owner = (T0, T1, T2);
     type Type = T1;
     const NAME: &'static str = "1";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .1);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .1);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1644,8 +1656,10 @@ unsafe impl<T0, T1, T2> FieldDescriptor<2> for (T0, T1, T2) {
     type Owner = (T0, T1, T2);
     type Type = T2;
     const NAME: &'static str = "2";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .2);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2), .2);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1665,8 +1679,10 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<0> for (T0, T1, T2, T3) {
     type Owner = (T0, T1, T2, T3);
     type Type = T0;
     const NAME: &'static str = "0";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .0);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .0);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1674,8 +1690,10 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<1> for (T0, T1, T2, T3) {
     type Owner = (T0, T1, T2, T3);
     type Type = T1;
     const NAME: &'static str = "1";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .1);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .1);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1683,8 +1701,10 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<2> for (T0, T1, T2, T3) {
     type Owner = (T0, T1, T2, T3);
     type Type = T2;
     const NAME: &'static str = "2";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .2);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .2);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
@@ -1692,8 +1712,10 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<3> for (T0, T1, T2, T3) {
     type Owner = (T0, T1, T2, T3);
     type Type = T3;
     const NAME: &'static str = "3";
-    // TODO(thephd):
-    //const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .3);
+    // TODO(thephd): monitor bootstrap situation related to std::mem::offset_of
+    #[cfg(not(bootstrap))]
+    const BYTE_OFFSET: usize = std::mem::offset_of!((T0, T1, T2, T3), .3);
+    #[cfg(bootstrap)]
     const BYTE_OFFSET: usize = 0;
 }
 
