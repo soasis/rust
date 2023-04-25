@@ -230,7 +230,7 @@ use crate::option::Option;
 /// The Abstract Data Type (ADT) identifier for determining the kind of ADT being
 /// reflected over. Included as part of anything that implements ghe `AdtDescriptor`
 /// trait.
-#[repr(u8)]
+#[non_exhaustive]
 pub enum AdtId {
     /// An abstract data type made using the `struct` keyword. Offsets are from the beginning
     /// of the object, and may not correspond to the source code order of the field.
@@ -285,6 +285,21 @@ pub enum AdtId {
 pub struct NoType;
 
 const NO_TYPE: NoType = NoType;
+
+/// An enumeration for determining the different ways a struct or variant
+/// is defined.
+#[non_exhaustive]
+pub enum FieldSyntax {
+    /// Nothing was used, as in e.g. E::A in `enum E { A }`
+    /// or `struct S;`.
+    Nothing,
+    /// Parentheses were used, as in e.g. E::A in `enum E { A() }`
+    /// or `struct S()`.
+    Parentheses,
+    /// Braces were used, as in e.g. E::A in `enum E { A{} }`
+    /// or `struct S{}`.
+    Braces,
+}
 
 /// A list of names and values of attributes contained within the
 /// `#[introwospection(...)]` attribute.
@@ -342,9 +357,8 @@ pub unsafe trait StructDescriptor: AdtDescriptor {
     type Fields = NoType;
     /// The number of fields for this `struct` type.
     const FIELD_COUNT: usize = 0;
-    /// Whether or not this type was created using the tuple-struct syntax, e.g.
-    /// `struct Example(…)`, or not.
-    const IS_TUPLE_STRUCT: bool = false;
+    /// What kind of syntax was used to encapsulate the fields on this `struct` type.
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Nothing;
     /// Whether or not there are any fields which are not visible for this type.
     const NON_VISIBLE_FIELDS: bool = false;
 }
@@ -370,6 +384,8 @@ pub unsafe trait UnionDescriptor: AdtDescriptor {
     type Fields = NoType;
     /// The number of fields for this `union` type.
     const FIELD_COUNT: usize = 0;
+    /// What kind of syntax was used to encapsulate the fields for this `union`'s fields.
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Nothing;
     /// Whether or not there are any fields which are not visible for this type.
     const NON_VISIBLE_FIELDS: bool = false;
 }
@@ -393,6 +409,9 @@ pub unsafe trait EnumDescriptor: AdtDescriptor {
     type Variants = NoType;
     /// The number of variants for this enumeration.
     const VARIANT_COUNT: usize = 0;
+    /// Whether or not this enumeration is an integer-style
+    /// (`#[repr(IntType)]`) enumeration.
+    const IS_INTEGER_ENUMERATION: bool = false;
 }
 
 /// A description of a function definition or similar construct.
@@ -544,8 +563,8 @@ pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// attribute, `#[repr(Int)]`. Used in conjunction with the `INTEGER_VALUE` associated
     /// `const` item.
     type Int: 'static = NoType;
-    /// Whether or not this variant is declared using tuple-like syntax (e.g., `A(T0, ..., TN)`).
-    const IS_TUPLE_VARIANT: bool = false;
+    /// What kind of syntax was used to encapsulate the fields for this `enum` variant's fields.
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Nothing;
     /// The 0-based index of the variant in declaration (source code) order.
     const DECLARATION_INDEX: usize = DECLARATION_INDEX;
     /// The name of the variant within the enumeration.
@@ -970,7 +989,7 @@ pub struct AnyStructDescriptor {
     pub name: &'static str,
     /// Whether or not this `struct` is a tuple `struct` (it has the form
     /// `struct SomeStruct(T0, ..., TN)`).
-    pub is_tuple_struct: bool,
+    pub field_syntax: FieldSyntax,
     /// A slice describing each field of this `struct` type.
     pub fields: &'static [AnyFieldDescriptor],
     /// The introwospection attributes (`#[introwospection(...)`]) attached to this entity.
@@ -996,6 +1015,8 @@ pub struct AnyUnionDescriptor {
     pub type_id: TypeId,
     /// The name of the `union`.
     pub name: &'static str,
+    /// What kind of syntax was used to encapsulate the fields for this `union`'s fields.
+    pub field_syntax: FieldSyntax,
     /// A slice describing each field of this `union` type.
     pub fields: &'static [AnyFieldDescriptor],
     /// The introwospection attributes (`#[introwospection(...)`]) attached to this entity.
@@ -1197,7 +1218,7 @@ pub struct AnyVariantDescriptor {
     /// The fields that are part of this variant.
     pub fields: &'static [AnyFieldDescriptor],
     /// Whether or not this variant is a tuple variant (it has the form `A(T0, ..., TN)`).
-    pub is_tuple_variant: bool,
+    pub field_syntax: FieldSyntax,
     /// A type-erased reference to a `Discriminant<T>` type. A user should check the `owner_type_id`
     /// parameter to verify the proper type `T` for the containing data type, then cast this to
     /// the appropriate `Discriminant<T>` to use.
@@ -1380,7 +1401,7 @@ impl StructDescriptorVisitor for ToAnyDescriptorVisitor {
             adt_id: Type::ID,
             name: Type::NAME,
             type_id: TypeId::of::<Type::Type>(),
-            is_tuple_struct: Type::IS_TUPLE_STRUCT,
+            field_syntax: Type::FIELD_SYNTAX,
             fields,
             attributes: Type::ATTRIBUTES,
         }
@@ -1400,6 +1421,7 @@ impl UnionDescriptorVisitor for ToAnyDescriptorVisitor {
         //     = &[introwospect_over(Type::Type, Type::Fields, &self)];
         AnyUnionDescriptor {
             adt_id: Type::ID,
+            field_syntax: Type::FIELD_SYNTAX,
             name: Type::NAME,
             type_id: TypeId::of::<Type::Type>(),
             fields,
@@ -1535,7 +1557,7 @@ impl VariantDescriptorVisitor for ToAnyDescriptorVisitor {
             owner_type_id: TypeId::of::<Type::Owner>(),
             discriminant: Type::DISCRIMINANT as &'static dyn Any,
             declaration_index: DECLARATION_INDEX,
-            is_tuple_variant: Type::IS_TUPLE_VARIANT,
+            field_syntax: Type::FIELD_SYNTAX,
             fields,
             integer_value: match Type::INTEGER_VALUE {
                 Some(val) => val as &'static dyn Any,
@@ -1556,6 +1578,25 @@ impl Debug for NoType {
 impl Display for NoType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Display::fmt(<Self as AdtDescriptor>::NAME, f)
+    }
+}
+
+impl Debug for FieldSyntax {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl Display for FieldSyntax {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            FieldSyntax::Nothing => Display::fmt("core::introwospection::FieldSyntax::Nothing", f),
+            FieldSyntax::Parentheses => {
+                Display::fmt("core::introwospection::FieldSyntax::Parentheses", f)
+            }
+            FieldSyntax::Braces => Display::fmt("core::introwospection::FieldSyntax::Nothing", f),
+        }
     }
 }
 
