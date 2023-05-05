@@ -284,6 +284,9 @@ pub enum AdtId {
 /// are anonymous (their `NAME` is empty) or have names.
 pub struct NoType;
 
+/// An instance of the `NoType` structure, for use in returning a consistent
+/// "not available" representation for specific fields on the creation of the
+/// `Any{…}Descriptor` types.
 const NO_TYPE: NoType = NoType;
 
 /// An enumeration for determining the different ways a struct or variant
@@ -336,58 +339,62 @@ pub unsafe trait AdtDescriptor {
     const ATTRIBUTES: &'static [AttributeDescriptor] = &[];
 }
 
-/// A description of a `struct` type.
-pub unsafe trait StructDescriptor: AdtDescriptor {
-    /// The type of the `struct` that was described.
-    type Type;
-    /// A type that represents the fields of this `struct`. If this is
-    /// `core::introwospection::NoType`, then it has no fields and no field
-    /// implementations on it.
+/// A description for an ADT which may be associated with an inherent implementation,
+/// such as `struct`s, `union`s, and enumerations.
+pub unsafe trait InherentFunctionsAdt {
+    /// A type describing all of the inherent functions associated with this enumeration.
     ///
     /// NOTE
     /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
+    ///
+    /// ```
+    /// type InherentFunctions :
+    ///     (for <const I: usize = 0..Self::INHERENT_FUNCTION_COUNT>
+    ///         InherentFunctionDescriptor<I>
+    ///     )
+    /// = NoType;
+    /// ```
+    /// doing this would allow it to be acted upon in a meaningful fashion by generic code,
+    /// but such bounds/constraint technology does not exist yet.
+    type InherentFunctions = NoType;
+    /// The number of inherent functions for this enumeration.
+    const INHERENT_FUNCTION_COUNT: usize = 0;
+}
+
+/// A description for an ADT which may have fields as part of its creation and description,
+/// such as `struct`s, `union`s, tuples, and the variants of enumerations.
+pub unsafe trait FieldsAdt {
+    /// A type describing all of the fields associated with this type.
+    ///
+    /// NOTE
+    /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
+    ///
     /// ```
     /// type Fields :
     ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
     /// = NoType;
     /// ```
-    /// to specify the proper boundaries to make this type usable in generic contexts. (This is
-    /// bikeshed syntax and subject to change, as there is already a `for <T>` trait bounds
-    /// feature in Rust.)
+    /// doing this would allow it to be acted upon in a meaningful fashion by generic code,
+    /// but such bounds/constraint technology does not exist yet.
     type Fields = NoType;
-    /// The number of fields for this `struct` type.
+    /// The number of fields on this type.
     const FIELD_COUNT: usize = 0;
-    /// What kind of syntax was used to encapsulate the fields on this `struct` type.
+    /// What kind of syntax was used to encapsulate the fields on this type.
     const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Nothing;
     /// Whether or not there are any fields which are not visible for this type.
     const NON_VISIBLE_FIELDS: bool = false;
 }
 
+/// A description of a `struct` type.
+pub unsafe trait StructDescriptor: AdtDescriptor + FieldsAdt {
+    /// The type of the `struct` that was described.
+    type Type;
+}
+
 /// A description of a `union` type.
-pub unsafe trait UnionDescriptor: AdtDescriptor {
+pub unsafe trait UnionDescriptor: AdtDescriptor + FieldsAdt {
     /// The type of the `union` that was described.
     type Type;
-    /// A type that represents the fields of this `union`. If this is
-    /// `core::introwospection::NoType`, then it has no fields and no field
-    /// implementations on it.
-    ///
-    /// NOTE
-    /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
-    /// ```
-    /// type Fields :
-    ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
-    /// = NoType;
-    /// ```
-    /// to specify the proper boundaries to make this type usable in generic contexts. (This is
-    /// bikeshed syntax and subject to change, as there is already a `for <T>` trait bounds
-    /// feature in Rust.)
-    type Fields = NoType;
-    /// The number of fields for this `union` type.
-    const FIELD_COUNT: usize = 0;
-    /// What kind of syntax was used to encapsulate the fields for this `union`'s fields.
-    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Nothing;
-    /// Whether or not there are any fields which are not visible for this type.
-    const NON_VISIBLE_FIELDS: bool = false;
 }
 
 /// A description of an enumeration type.
@@ -439,6 +446,15 @@ pub unsafe trait FunctionDescriptor: AdtDescriptor {
     const PARAMETER_COUNT: usize = 0;
 }
 
+/// A description of a function implementation on an existing type as part of its `impl`
+/// definition. Note that this does not include implementations of a specific trait for
+/// a specific type.
+pub unsafe trait InherentFunctionDescriptor<const INDEX: usize>: FunctionDescriptor {
+    /// The type this inherent function belongs to. Note that this does not imply a
+    /// `self` parameter or `Self` return exists on the function.
+    type Owner;
+}
+
 /// A description of a built-in array type.
 pub unsafe trait ArrayDescriptor: AdtDescriptor {
     /// The full type of the array.
@@ -458,26 +474,9 @@ pub unsafe trait SliceDescriptor: AdtDescriptor {
 }
 
 /// A description of a built-in tuple type.
-pub unsafe trait TupleDescriptor: AdtDescriptor {
+pub unsafe trait TupleDescriptor: AdtDescriptor + FieldsAdt {
     /// The full type of the tuple.
     type Type;
-    /// A type that represents the fields of this tuple. If this is
-    /// `core::introwospection::NoType`, then it has no fields and no field
-    /// implementations on it.
-    ///
-    /// NOTE
-    /// TODO(thephd) Enable a succint way to describe all of the constraints on this type:
-    /// ```
-    /// type Fields :
-    ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
-    /// = NoType;
-    /// ```
-    /// to specify the proper boundaries to make this type usable in generic contexts. (This is
-    /// bikeshed syntax and subject to change, as there is already a `for <T>` trait bounds
-    /// feature in Rust.)
-    type Fields = NoType;
-    /// The number of fields contained in this tuple.
-    const FIELD_COUNT: usize = 0;
 }
 
 /// A parameter for a function definition, or similar construction.
@@ -542,29 +541,13 @@ pub unsafe trait FieldDescriptor<const DECLARATION_INDEX: usize> {
 /// names to its fields, at compile-time.
 ///
 /// `DECLARATION_INDEX` is the index of the variant in declaration (source code) order.
-pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize> {
+pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize>: FieldsAdt {
     /// The type which owns this variant.
     type Owner: 'static + EnumDescriptor;
-    /// A type that represents the fields of this enumeration's variant. If this
-    /// is `core::introwospection::NoType`, then it has no implementations of a field.
-    ///
-    /// NOTE
-    /// TODO(thephd) Enable a succinct way to describe all of the constraints on this type:
-    /// ```
-    /// type Fields :
-    ///     (for <const I: usize = 0..Self::FIELD_COUNT> FieldDescriptor<I>)
-    /// = NoType;
-    /// ```
-    /// to specify the proper boundaries to make this type usable in generic contexts. (This is
-    /// bikeshed syntax and subject to change, as there is already a `for <T>` trait bounds
-    /// feature in Rust.)
-    type Fields = NoType;
     /// The integer type that is used for this declaration if it was declared with the representation
     /// attribute, `#[repr(Int)]`. Used in conjunction with the `INTEGER_VALUE` associated
     /// `const` item.
     type Int: 'static = NoType;
-    /// What kind of syntax was used to encapsulate the fields for this `enum` variant's fields.
-    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Nothing;
     /// The 0-based index of the variant in declaration (source code) order.
     const DECLARATION_INDEX: usize = DECLARATION_INDEX;
     /// The name of the variant within the enumeration.
@@ -585,9 +568,8 @@ pub unsafe trait VariantDescriptor<const DECLARATION_INDEX: usize> {
     /// to get a discriminant at compile-time without needing to generate a fake
     /// enumeration object.
     const DISCRIMINANT: &'static Discriminant<Self::Owner>;
-    /// The number of field descriptors associated with the `Fields` type and this variant.
-    /// `FIELD_COUNT` and `FielsdType` can be used if `FIELD_COUNT` is zero
-    const FIELD_COUNT: usize = 0;
+    /// The size of this variant within the enumeration type.
+    const BYTE_SIZE: usize = 0;
     /// The value of an enumeration which opts into a `#[repr(Int)]` representation.
     /// If the enumeration has not opted into such a representation, then this will be
     /// `None`. Otherwise, `Self::Int` will be set to the integer type specified in the
@@ -1097,6 +1079,8 @@ pub struct AnyTupleDescriptor {
     /// A slice describing each field of this tuple. If this is empty,
     /// this is the unit type.
     pub fields: &'static [AnyFieldDescriptor],
+    /// The field syntax for this type. Should always be `FieldSyntax::Parentheses`.
+    pub field_syntax: FieldSyntax,
     /// A built-in type has no user-controllable attributes, but this is here either way.
     pub attributes: &'static [AttributeDescriptor; 0],
 }
@@ -1485,6 +1469,7 @@ impl TupleDescriptorVisitor for ToAnyDescriptorVisitor {
             name: Type::NAME,
             type_id: TypeId::of::<Type>(),
             fields,
+            field_syntax: Type::FIELD_SYNTAX,
             attributes: &[],
         }
     }
@@ -1646,6 +1631,7 @@ unsafe impl AdtDescriptor for NoType {
 unsafe impl StructDescriptor for NoType {
     type Type = NoType;
 }
+unsafe impl FieldsAdt for NoType {}
 
 // NoType / none indicator type
 unsafe impl<'life> AdtDescriptor for &'life NoType {
@@ -1656,6 +1642,7 @@ unsafe impl<'life> AdtDescriptor for &'life NoType {
 unsafe impl<'life> StructDescriptor for &'life NoType {
     type Type = &'life NoType;
 }
+unsafe impl<'life> FieldsAdt for &'life NoType {}
 
 // slices
 unsafe impl<'slice_lifetime, T> AdtDescriptor for &'slice_lifetime [T] {
@@ -1698,6 +1685,9 @@ unsafe impl AdtDescriptor for () {
 unsafe impl TupleDescriptor for () {
     type Type = ();
 }
+unsafe impl FieldsAdt for () {
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Parentheses;
+}
 unsafe impl<'lifetime> AdtDescriptor for &'lifetime () {
     const ID: AdtId = AdtId::Tuple;
     const NAME: &'static str = type_name::<&'lifetime ()>();
@@ -1705,6 +1695,9 @@ unsafe impl<'lifetime> AdtDescriptor for &'lifetime () {
 
 unsafe impl<'lifetime> TupleDescriptor for &'lifetime () {
     type Type = &'lifetime ();
+}
+unsafe impl<'lifetime> FieldsAdt for &'lifetime () {
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Parentheses;
 }
 
 // 1-tuple
@@ -1725,9 +1718,13 @@ unsafe impl<T0> FieldDescriptor<0> for (T0,) {
 }
 
 unsafe impl<T0> TupleDescriptor for (T0,) {
-    type Fields = (T0,);
     type Type = (T0,);
+}
+
+unsafe impl<T0> FieldsAdt for (T0,) {
+    type Fields = (T0,);
     const FIELD_COUNT: usize = 1;
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Parentheses;
 }
 
 // 2-tuple
@@ -1759,9 +1756,13 @@ unsafe impl<T0, T1> FieldDescriptor<1> for (T0, T1) {
 }
 
 unsafe impl<T0, T1> TupleDescriptor for (T0, T1) {
-    type Fields = (T0, T1);
     type Type = (T0, T1);
+}
+
+unsafe impl<T0, T1> FieldsAdt for (T0, T1) {
+    type Fields = (T0, T1);
     const FIELD_COUNT: usize = 2;
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Parentheses;
 }
 
 // 3-tuple
@@ -1804,9 +1805,13 @@ unsafe impl<T0, T1, T2> FieldDescriptor<2> for (T0, T1, T2) {
 }
 
 unsafe impl<T0, T1, T2> TupleDescriptor for (T0, T1, T2) {
-    type Fields = (T0, T1, T2);
     type Type = (T0, T1, T2);
+}
+
+unsafe impl<T0, T1, T2> FieldsAdt for (T0, T1, T2) {
+    type Fields = (T0, T1, T2);
     const FIELD_COUNT: usize = 3;
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Parentheses;
 }
 
 // 4-tuple
@@ -1860,7 +1865,11 @@ unsafe impl<T0, T1, T2, T3> FieldDescriptor<3> for (T0, T1, T2, T3) {
 }
 
 unsafe impl<T0, T1, T2, T3> TupleDescriptor for (T0, T1, T2, T3) {
-    type Fields = (T0, T1, T2, T3);
     type Type = (T0, T1, T2, T3);
+}
+
+unsafe impl<T0, T1, T2, T3> FieldsAdt for (T0, T1, T2, T3) {
+    type Fields = (T0, T1, T2, T3);
     const FIELD_COUNT: usize = 4;
+    const FIELD_SYNTAX: FieldSyntax = FieldSyntax::Parentheses;
 }
